@@ -1,0 +1,2595 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Atelier — stock de consommables</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script>
+//---------------------------------------------------------------------
+//
+// QR Code Generator for JavaScript
+//
+// Copyright (c) 2009 Kazuhiko Arase
+//
+// URL: http://www.d-project.com/
+//
+// Licensed under the MIT license:
+//  http://www.opensource.org/licenses/mit-license.php
+//
+// The word 'QR Code' is registered trademark of
+// DENSO WAVE INCORPORATED
+//  http://www.denso-wave.com/qrcode/faqpatent-e.html
+//
+//---------------------------------------------------------------------
+
+var qrcode = function() {
+
+  var qrcode = function(typeNumber, errorCorrectionLevel) {
+
+    var PAD0 = 0xEC;
+    var PAD1 = 0x11;
+
+    var _typeNumber = typeNumber;
+    var _errorCorrectionLevel = QRErrorCorrectionLevel[errorCorrectionLevel];
+    var _modules = null;
+    var _moduleCount = 0;
+    var _dataCache = null;
+    var _dataList = new Array();
+
+    var _this = {};
+
+    var makeImpl = function(test, maskPattern) {
+
+      _moduleCount = _typeNumber * 4 + 17;
+      _modules = function(moduleCount) {
+        var modules = new Array(moduleCount);
+        for (var row = 0; row < moduleCount; row += 1) {
+          modules[row] = new Array(moduleCount);
+          for (var col = 0; col < moduleCount; col += 1) {
+            modules[row][col] = null;
+          }
+        }
+        return modules;
+      }(_moduleCount);
+
+      setupPositionProbePattern(0, 0);
+      setupPositionProbePattern(_moduleCount - 7, 0);
+      setupPositionProbePattern(0, _moduleCount - 7);
+      setupPositionAdjustPattern();
+      setupTimingPattern();
+      setupTypeInfo(test, maskPattern);
+
+      if (_typeNumber >= 7) {
+        setupTypeNumber(test);
+      }
+
+      if (_dataCache == null) {
+        _dataCache = createData(_typeNumber, _errorCorrectionLevel, _dataList);
+      }
+
+      mapData(_dataCache, maskPattern);
+    };
+
+    var setupPositionProbePattern = function(row, col) {
+
+      for (var r = -1; r <= 7; r += 1) {
+
+        if (row + r <= -1 || _moduleCount <= row + r) continue;
+
+        for (var c = -1; c <= 7; c += 1) {
+
+          if (col + c <= -1 || _moduleCount <= col + c) continue;
+
+          if ( (0 <= r && r <= 6 && (c == 0 || c == 6) )
+              || (0 <= c && c <= 6 && (r == 0 || r == 6) )
+              || (2 <= r && r <= 4 && 2 <= c && c <= 4) ) {
+            _modules[row + r][col + c] = true;
+          } else {
+            _modules[row + r][col + c] = false;
+          }
+        }
+      }
+    };
+
+    var getBestMaskPattern = function() {
+
+      var minLostPoint = 0;
+      var pattern = 0;
+
+      for (var i = 0; i < 8; i += 1) {
+
+        makeImpl(true, i);
+
+        var lostPoint = QRUtil.getLostPoint(_this);
+
+        if (i == 0 || minLostPoint > lostPoint) {
+          minLostPoint = lostPoint;
+          pattern = i;
+        }
+      }
+
+      return pattern;
+    };
+
+    var setupTimingPattern = function() {
+
+      for (var r = 8; r < _moduleCount - 8; r += 1) {
+        if (_modules[r][6] != null) {
+          continue;
+        }
+        _modules[r][6] = (r % 2 == 0);
+      }
+
+      for (var c = 8; c < _moduleCount - 8; c += 1) {
+        if (_modules[6][c] != null) {
+          continue;
+        }
+        _modules[6][c] = (c % 2 == 0);
+      }
+    };
+
+    var setupPositionAdjustPattern = function() {
+
+      var pos = QRUtil.getPatternPosition(_typeNumber);
+
+      for (var i = 0; i < pos.length; i += 1) {
+
+        for (var j = 0; j < pos.length; j += 1) {
+
+          var row = pos[i];
+          var col = pos[j];
+
+          if (_modules[row][col] != null) {
+            continue;
+          }
+
+          for (var r = -2; r <= 2; r += 1) {
+
+            for (var c = -2; c <= 2; c += 1) {
+
+              if (r == -2 || r == 2 || c == -2 || c == 2
+                  || (r == 0 && c == 0) ) {
+                _modules[row + r][col + c] = true;
+              } else {
+                _modules[row + r][col + c] = false;
+              }
+            }
+          }
+        }
+      }
+    };
+
+    var setupTypeNumber = function(test) {
+
+      var bits = QRUtil.getBCHTypeNumber(_typeNumber);
+
+      for (var i = 0; i < 18; i += 1) {
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+        _modules[Math.floor(i / 3)][i % 3 + _moduleCount - 8 - 3] = mod;
+      }
+
+      for (var i = 0; i < 18; i += 1) {
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+        _modules[i % 3 + _moduleCount - 8 - 3][Math.floor(i / 3)] = mod;
+      }
+    };
+
+    var setupTypeInfo = function(test, maskPattern) {
+
+      var data = (_errorCorrectionLevel << 3) | maskPattern;
+      var bits = QRUtil.getBCHTypeInfo(data);
+
+      for (var i = 0; i < 15; i += 1) {
+
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+
+        if (i < 6) {
+          _modules[i][8] = mod;
+        } else if (i < 8) {
+          _modules[i + 1][8] = mod;
+        } else {
+          _modules[_moduleCount - 15 + i][8] = mod;
+        }
+      }
+
+      for (var i = 0; i < 15; i += 1) {
+
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+
+        if (i < 8) {
+          _modules[8][_moduleCount - i - 1] = mod;
+        } else if (i < 9) {
+          _modules[8][15 - i - 1 + 1] = mod;
+        } else {
+          _modules[8][15 - i - 1] = mod;
+        }
+      }
+
+      _modules[_moduleCount - 8][8] = (!test);
+    };
+
+    var mapData = function(data, maskPattern) {
+
+      var inc = -1;
+      var row = _moduleCount - 1;
+      var bitIndex = 7;
+      var byteIndex = 0;
+      var maskFunc = QRUtil.getMaskFunction(maskPattern);
+
+      for (var col = _moduleCount - 1; col > 0; col -= 2) {
+
+        if (col == 6) col -= 1;
+
+        while (true) {
+
+          for (var c = 0; c < 2; c += 1) {
+
+            if (_modules[row][col - c] == null) {
+
+              var dark = false;
+
+              if (byteIndex < data.length) {
+                dark = ( ( (data[byteIndex] >>> bitIndex) & 1) == 1);
+              }
+
+              var mask = maskFunc(row, col - c);
+
+              if (mask) {
+                dark = !dark;
+              }
+
+              _modules[row][col - c] = dark;
+              bitIndex -= 1;
+
+              if (bitIndex == -1) {
+                byteIndex += 1;
+                bitIndex = 7;
+              }
+            }
+          }
+
+          row += inc;
+
+          if (row < 0 || _moduleCount <= row) {
+            row -= inc;
+            inc = -inc;
+            break;
+          }
+        }
+      }
+    };
+
+    var createBytes = function(buffer, rsBlocks) {
+
+      var offset = 0;
+
+      var maxDcCount = 0;
+      var maxEcCount = 0;
+
+      var dcdata = new Array(rsBlocks.length);
+      var ecdata = new Array(rsBlocks.length);
+
+      for (var r = 0; r < rsBlocks.length; r += 1) {
+
+        var dcCount = rsBlocks[r].dataCount;
+        var ecCount = rsBlocks[r].totalCount - dcCount;
+
+        maxDcCount = Math.max(maxDcCount, dcCount);
+        maxEcCount = Math.max(maxEcCount, ecCount);
+
+        dcdata[r] = new Array(dcCount);
+
+        for (var i = 0; i < dcdata[r].length; i += 1) {
+          dcdata[r][i] = 0xff & buffer.getBuffer()[i + offset];
+        }
+        offset += dcCount;
+
+        var rsPoly = QRUtil.getErrorCorrectPolynomial(ecCount);
+        var rawPoly = qrPolynomial(dcdata[r], rsPoly.getLength() - 1);
+
+        var modPoly = rawPoly.mod(rsPoly);
+        ecdata[r] = new Array(rsPoly.getLength() - 1);
+        for (var i = 0; i < ecdata[r].length; i += 1) {
+          var modIndex = i + modPoly.getLength() - ecdata[r].length;
+          ecdata[r][i] = (modIndex >= 0)? modPoly.getAt(modIndex) : 0;
+        }
+      }
+
+      var totalCodeCount = 0;
+      for (var i = 0; i < rsBlocks.length; i += 1) {
+        totalCodeCount += rsBlocks[i].totalCount;
+      }
+
+      var data = new Array(totalCodeCount);
+      var index = 0;
+
+      for (var i = 0; i < maxDcCount; i += 1) {
+        for (var r = 0; r < rsBlocks.length; r += 1) {
+          if (i < dcdata[r].length) {
+            data[index] = dcdata[r][i];
+            index += 1;
+          }
+        }
+      }
+
+      for (var i = 0; i < maxEcCount; i += 1) {
+        for (var r = 0; r < rsBlocks.length; r += 1) {
+          if (i < ecdata[r].length) {
+            data[index] = ecdata[r][i];
+            index += 1;
+          }
+        }
+      }
+
+      return data;
+    };
+
+    var createData = function(typeNumber, errorCorrectionLevel, dataList) {
+
+      var rsBlocks = QRRSBlock.getRSBlocks(typeNumber, errorCorrectionLevel);
+
+      var buffer = qrBitBuffer();
+
+      for (var i = 0; i < dataList.length; i += 1) {
+        var data = dataList[i];
+        buffer.put(data.getMode(), 4);
+        buffer.put(data.getLength(), QRUtil.getLengthInBits(data.getMode(), typeNumber) );
+        data.write(buffer);
+      }
+
+      var totalDataCount = 0;
+      for (var i = 0; i < rsBlocks.length; i += 1) {
+        totalDataCount += rsBlocks[i].dataCount;
+      }
+
+      if (buffer.getLengthInBits() > totalDataCount * 8) {
+        throw new Error('code length overflow. ('
+          + buffer.getLengthInBits()
+          + '>'
+          + totalDataCount * 8
+          + ')');
+      }
+
+      if (buffer.getLengthInBits() + 4 <= totalDataCount * 8) {
+        buffer.put(0, 4);
+      }
+
+      while (buffer.getLengthInBits() % 8 != 0) {
+        buffer.putBit(false);
+      }
+
+      while (true) {
+
+        if (buffer.getLengthInBits() >= totalDataCount * 8) {
+          break;
+        }
+        buffer.put(PAD0, 8);
+
+        if (buffer.getLengthInBits() >= totalDataCount * 8) {
+          break;
+        }
+        buffer.put(PAD1, 8);
+      }
+
+      return createBytes(buffer, rsBlocks);
+    };
+
+    _this.addData = function(data, mode) {
+
+      mode = mode || 'Byte';
+
+      var newData = null;
+
+      switch(mode) {
+      case 'Numeric' :
+        newData = qrNumber(data);
+        break;
+      case 'Alphanumeric' :
+        newData = qrAlphaNum(data);
+        break;
+      case 'Byte' :
+        newData = qr8BitByte(data);
+        break;
+      case 'Kanji' :
+        newData = qrKanji(data);
+        break;
+      default :
+        throw 'mode:' + mode;
+      }
+
+      _dataList.push(newData);
+      _dataCache = null;
+    };
+
+    _this.isDark = function(row, col) {
+      if (row < 0 || _moduleCount <= row || col < 0 || _moduleCount <= col) {
+        throw new Error(row + ',' + col);
+      }
+      return _modules[row][col];
+    };
+
+    _this.getModuleCount = function() {
+      return _moduleCount;
+    };
+
+    _this.make = function() {
+      makeImpl(false, getBestMaskPattern() );
+    };
+
+    _this.createSvgTag = function(cellSize, margin) {
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var c, mc, r, mr, qrSvg='', rect;
+
+      rect = 'l' + cellSize + ',0 0,' + cellSize +
+        ' -' + cellSize + ',0 0,-' + cellSize + 'z ';
+
+      qrSvg += '<svg';
+      qrSvg += ' viewBox="0 0 ' + size + ' ' + size + '"';
+      qrSvg += ' xmlns="http://www.w3.org/2000/svg"';
+      qrSvg += '>';
+      qrSvg += '<rect width="100%" height="100%" fill="#ffffff"/>';
+      qrSvg += '<path d="';
+
+      for (r = 0; r < _this.getModuleCount(); r += 1) {
+        mr = r * cellSize + margin;
+        for (c = 0; c < _this.getModuleCount(); c += 1) {
+          if (_this.isDark(r, c) ) {
+            mc = c*cellSize+margin;
+            qrSvg += 'M' + mc + ',' + mr + rect;
+          }
+        }
+      }
+
+      qrSvg += '" stroke="transparent" fill="#000000"/>';
+      qrSvg += '</svg>';
+
+      return qrSvg;
+    };
+
+    return _this;
+  };
+
+  qrcode.stringToBytes = function(s) {
+    var bytes = new Array();
+    for (var i = 0; i < s.length; i += 1) {
+      var c = s.charCodeAt(i);
+      bytes.push(c & 0xff);
+    }
+    return bytes;
+  };
+
+  var QRMode = {
+    MODE_NUMBER :    1 << 0,
+    MODE_ALPHA_NUM : 1 << 1,
+    MODE_8BIT_BYTE : 1 << 2,
+    MODE_KANJI :     1 << 3
+  };
+
+  var QRErrorCorrectionLevel = {
+    L : 1,
+    M : 0,
+    Q : 3,
+    H : 2
+  };
+
+  var QRMaskPattern = {
+    PATTERN000 : 0,
+    PATTERN001 : 1,
+    PATTERN010 : 2,
+    PATTERN011 : 3,
+    PATTERN100 : 4,
+    PATTERN101 : 5,
+    PATTERN110 : 6,
+    PATTERN111 : 7
+  };
+
+  var QRUtil = function() {
+
+    var PATTERN_POSITION_TABLE = [
+      [],
+      [6, 18],
+      [6, 22],
+      [6, 26],
+      [6, 30],
+      [6, 34],
+      [6, 22, 38],
+      [6, 24, 42],
+      [6, 26, 46],
+      [6, 28, 50],
+      [6, 30, 54],
+      [6, 32, 58],
+      [6, 34, 62],
+      [6, 26, 46, 66],
+      [6, 26, 48, 70],
+      [6, 26, 50, 74],
+      [6, 30, 54, 78],
+      [6, 30, 56, 82],
+      [6, 30, 58, 86],
+      [6, 34, 62, 90],
+      [6, 28, 50, 72, 94],
+      [6, 26, 50, 74, 98],
+      [6, 30, 54, 78, 102],
+      [6, 28, 54, 80, 106],
+      [6, 32, 58, 84, 110],
+      [6, 30, 58, 86, 114],
+      [6, 34, 62, 90, 118],
+      [6, 26, 50, 74, 98, 122],
+      [6, 30, 54, 78, 102, 126],
+      [6, 26, 52, 78, 104, 130],
+      [6, 30, 56, 82, 108, 134],
+      [6, 34, 60, 86, 112, 138],
+      [6, 30, 58, 86, 114, 142],
+      [6, 34, 62, 90, 118, 146],
+      [6, 30, 54, 78, 102, 126, 150],
+      [6, 24, 50, 76, 102, 128, 154],
+      [6, 28, 54, 80, 106, 132, 158],
+      [6, 32, 58, 84, 110, 136, 162],
+      [6, 26, 54, 82, 110, 138, 166],
+      [6, 30, 58, 86, 114, 142, 170]
+    ];
+    var G15 = (1 << 10) | (1 << 8) | (1 << 5) | (1 << 4) | (1 << 2) | (1 << 1) | (1 << 0);
+    var G18 = (1 << 12) | (1 << 11) | (1 << 10) | (1 << 9) | (1 << 8) | (1 << 5) | (1 << 2) | (1 << 0);
+    var G15_MASK = (1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1);
+
+    var _this = {};
+
+    var getBCHDigit = function(data) {
+      var digit = 0;
+      while (data != 0) {
+        digit += 1;
+        data >>>= 1;
+      }
+      return digit;
+    };
+
+    _this.getBCHTypeInfo = function(data) {
+      var d = data << 10;
+      while (getBCHDigit(d) - getBCHDigit(G15) >= 0) {
+        d ^= (G15 << (getBCHDigit(d) - getBCHDigit(G15) ) );
+      }
+      return ( (data << 10) | d) ^ G15_MASK;
+    };
+
+    _this.getBCHTypeNumber = function(data) {
+      var d = data << 12;
+      while (getBCHDigit(d) - getBCHDigit(G18) >= 0) {
+        d ^= (G18 << (getBCHDigit(d) - getBCHDigit(G18) ) );
+      }
+      return (data << 12) | d;
+    };
+
+    _this.getPatternPosition = function(typeNumber) {
+      return PATTERN_POSITION_TABLE[typeNumber - 1];
+    };
+
+    _this.getMaskFunction = function(maskPattern) {
+
+      switch (maskPattern) {
+
+      case QRMaskPattern.PATTERN000 :
+        return function(i, j) { return (i + j) % 2 == 0; };
+      case QRMaskPattern.PATTERN001 :
+        return function(i, j) { return i % 2 == 0; };
+      case QRMaskPattern.PATTERN010 :
+        return function(i, j) { return j % 3 == 0; };
+      case QRMaskPattern.PATTERN011 :
+        return function(i, j) { return (i + j) % 3 == 0; };
+      case QRMaskPattern.PATTERN100 :
+        return function(i, j) { return (Math.floor(i / 2) + Math.floor(j / 3) ) % 2 == 0; };
+      case QRMaskPattern.PATTERN101 :
+        return function(i, j) { return (i * j) % 2 + (i * j) % 3 == 0; };
+      case QRMaskPattern.PATTERN110 :
+        return function(i, j) { return ( (i * j) % 2 + (i * j) % 3) % 2 == 0; };
+      case QRMaskPattern.PATTERN111 :
+        return function(i, j) { return ( (i * j) % 3 + (i + j) % 2) % 2 == 0; };
+
+      default :
+        throw new Error('bad maskPattern:' + maskPattern);
+      }
+    };
+
+    _this.getErrorCorrectPolynomial = function(errorCorrectLength) {
+      var a = qrPolynomial([1], 0);
+      for (var i = 0; i < errorCorrectLength; i += 1) {
+        a = a.multiply(qrPolynomial([1, QRMath.gexp(i)], 0) );
+      }
+      return a;
+    };
+
+    _this.getLengthInBits = function(mode, type) {
+
+      if (1 <= type && type < 10) {
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 10;
+        case QRMode.MODE_ALPHA_NUM : return 9;
+        case QRMode.MODE_8BIT_BYTE : return 8;
+        case QRMode.MODE_KANJI     : return 8;
+        default :
+          throw new Error('mode:' + mode);
+        }
+
+      } else if (type < 27) {
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 12;
+        case QRMode.MODE_ALPHA_NUM : return 11;
+        case QRMode.MODE_8BIT_BYTE : return 16;
+        case QRMode.MODE_KANJI     : return 10;
+        default :
+          throw new Error('mode:' + mode);
+        }
+
+      } else if (type < 41) {
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 14;
+        case QRMode.MODE_ALPHA_NUM : return 13;
+        case QRMode.MODE_8BIT_BYTE : return 16;
+        case QRMode.MODE_KANJI     : return 12;
+        default :
+          throw new Error('mode:' + mode);
+        }
+
+      } else {
+        throw new Error('type:' + type);
+      }
+    };
+
+    _this.getLostPoint = function(qrcode) {
+
+      var moduleCount = qrcode.getModuleCount();
+
+      var lostPoint = 0;
+
+      for (var row = 0; row < moduleCount; row += 1) {
+        for (var col = 0; col < moduleCount; col += 1) {
+
+          var sameCount = 0;
+          var dark = qrcode.isDark(row, col);
+
+          for (var r = -1; r <= 1; r += 1) {
+
+            if (row + r < 0 || moduleCount <= row + r) {
+              continue;
+            }
+
+            for (var c = -1; c <= 1; c += 1) {
+
+              if (col + c < 0 || moduleCount <= col + c) {
+                continue;
+              }
+
+              if (r == 0 && c == 0) {
+                continue;
+              }
+
+              if (dark == qrcode.isDark(row + r, col + c) ) {
+                sameCount += 1;
+              }
+            }
+          }
+
+          if (sameCount > 5) {
+            lostPoint += (3 + sameCount - 5);
+          }
+        }
+      };
+
+      for (var row = 0; row < moduleCount - 1; row += 1) {
+        for (var col = 0; col < moduleCount - 1; col += 1) {
+          var count = 0;
+          if (qrcode.isDark(row, col) ) count += 1;
+          if (qrcode.isDark(row + 1, col) ) count += 1;
+          if (qrcode.isDark(row, col + 1) ) count += 1;
+          if (qrcode.isDark(row + 1, col + 1) ) count += 1;
+          if (count == 0 || count == 4) {
+            lostPoint += 3;
+          }
+        }
+      }
+
+      for (var row = 0; row < moduleCount; row += 1) {
+        for (var col = 0; col < moduleCount - 6; col += 1) {
+          if (qrcode.isDark(row, col)
+              && !qrcode.isDark(row, col + 1)
+              &&  qrcode.isDark(row, col + 2)
+              &&  qrcode.isDark(row, col + 3)
+              &&  qrcode.isDark(row, col + 4)
+              && !qrcode.isDark(row, col + 5)
+              &&  qrcode.isDark(row, col + 6) ) {
+            lostPoint += 40;
+          }
+        }
+      }
+
+      for (var col = 0; col < moduleCount; col += 1) {
+        for (var row = 0; row < moduleCount - 6; row += 1) {
+          if (qrcode.isDark(row, col)
+              && !qrcode.isDark(row + 1, col)
+              &&  qrcode.isDark(row + 2, col)
+              &&  qrcode.isDark(row + 3, col)
+              &&  qrcode.isDark(row + 4, col)
+              && !qrcode.isDark(row + 5, col)
+              &&  qrcode.isDark(row + 6, col) ) {
+            lostPoint += 40;
+          }
+        }
+      }
+
+      var darkCount = 0;
+
+      for (var col = 0; col < moduleCount; col += 1) {
+        for (var row = 0; row < moduleCount; row += 1) {
+          if (qrcode.isDark(row, col) ) {
+            darkCount += 1;
+          }
+        }
+      }
+
+      var ratio = Math.abs(100 * darkCount / moduleCount / moduleCount - 50) / 5;
+      lostPoint += ratio * 10;
+
+      return lostPoint;
+    };
+
+    return _this;
+  }();
+
+  var QRMath = function() {
+
+    var EXP_TABLE = new Array(256);
+    var LOG_TABLE = new Array(256);
+
+    for (var i = 0; i < 8; i += 1) {
+      EXP_TABLE[i] = 1 << i;
+    }
+    for (var i = 8; i < 256; i += 1) {
+      EXP_TABLE[i] = EXP_TABLE[i - 4]
+        ^ EXP_TABLE[i - 5]
+        ^ EXP_TABLE[i - 6]
+        ^ EXP_TABLE[i - 8];
+    }
+    for (var i = 0; i < 255; i += 1) {
+      LOG_TABLE[EXP_TABLE[i] ] = i;
+    }
+
+    var _this = {};
+
+    _this.glog = function(n) {
+
+      if (n < 1) {
+        throw new Error('glog(' + n + ')');
+      }
+
+      return LOG_TABLE[n];
+    };
+
+    _this.gexp = function(n) {
+
+      while (n < 0) {
+        n += 255;
+      }
+
+      while (n >= 256) {
+        n -= 255;
+      }
+
+      return EXP_TABLE[n];
+    };
+
+    return _this;
+  }();
+
+  function qrPolynomial(num, shift) {
+
+    if (typeof num.length == 'undefined') {
+      throw new Error(num.length + '/' + shift);
+    }
+
+    var _num = function() {
+      var offset = 0;
+      while (offset < num.length && num[offset] == 0) {
+        offset += 1;
+      }
+      var _num = new Array(num.length - offset + shift);
+      for (var i = 0; i < num.length - offset; i += 1) {
+        _num[i] = num[i + offset];
+      }
+      return _num;
+    }();
+
+    var _this = {};
+
+    _this.getAt = function(index) {
+      return _num[index];
+    };
+
+    _this.getLength = function() {
+      return _num.length;
+    };
+
+    _this.multiply = function(e) {
+
+      var num = new Array(_this.getLength() + e.getLength() - 1);
+
+      for (var i = 0; i < _this.getLength(); i += 1) {
+        for (var j = 0; j < e.getLength(); j += 1) {
+          num[i + j] ^= QRMath.gexp(QRMath.glog(_this.getAt(i) ) + QRMath.glog(e.getAt(j) ) );
+        }
+      }
+
+      return qrPolynomial(num, 0);
+    };
+
+    _this.mod = function(e) {
+
+      if (_this.getLength() - e.getLength() < 0) {
+        return _this;
+      }
+
+      var ratio = QRMath.glog(_this.getAt(0) ) - QRMath.glog(e.getAt(0) );
+
+      var num = new Array(_this.getLength() );
+      for (var i = 0; i < _this.getLength(); i += 1) {
+        num[i] = _this.getAt(i);
+      }
+
+      for (var i = 0; i < e.getLength(); i += 1) {
+        num[i] ^= QRMath.gexp(QRMath.glog(e.getAt(i) ) + ratio);
+      }
+
+      return qrPolynomial(num, 0).mod(e);
+    };
+
+    return _this;
+  };
+
+  var QRRSBlock = function() {
+
+    var RS_BLOCK_TABLE = [
+      [1, 26, 19], [1, 26, 16], [1, 26, 13], [1, 26, 9],
+      [1, 44, 34], [1, 44, 28], [1, 44, 22], [1, 44, 16],
+      [1, 70, 55], [1, 70, 44], [2, 35, 17], [2, 35, 13],
+      [1, 100, 80], [2, 50, 32], [2, 50, 24], [4, 25, 9],
+      [1, 134, 108], [2, 67, 43], [2, 33, 15, 2, 34, 16], [2, 33, 11, 2, 34, 12],
+      [2, 86, 68], [4, 43, 27], [4, 43, 19], [4, 43, 15],
+      [2, 98, 78], [4, 49, 31], [2, 32, 14, 4, 33, 15], [4, 39, 13, 1, 40, 14],
+      [2, 121, 97], [2, 60, 38, 2, 61, 39], [4, 40, 18, 2, 41, 19], [4, 40, 14, 2, 41, 15],
+      [2, 146, 116], [3, 58, 36, 2, 59, 37], [4, 36, 16, 4, 37, 17], [4, 36, 12, 4, 37, 13],
+      [2, 86, 68, 2, 87, 69], [4, 69, 43, 1, 70, 44], [6, 43, 19, 2, 44, 20], [6, 43, 15, 2, 44, 16],
+      [4, 101, 81], [1, 80, 50, 4, 81, 51], [4, 50, 22, 4, 51, 23], [3, 36, 12, 8, 37, 13],
+      [2, 116, 92, 2, 117, 93], [6, 58, 36, 2, 59, 37], [4, 46, 20, 6, 47, 21], [7, 42, 14, 4, 43, 15],
+      [4, 133, 107], [8, 59, 37, 1, 60, 38], [8, 44, 20, 4, 45, 21], [12, 33, 11, 4, 34, 12],
+      [3, 145, 115, 1, 146, 116], [4, 64, 40, 5, 65, 41], [11, 36, 16, 5, 37, 17], [11, 36, 12, 5, 37, 13],
+      [5, 109, 87, 1, 110, 88], [5, 65, 41, 5, 66, 42], [5, 54, 24, 7, 55, 25], [11, 36, 12, 7, 37, 13],
+      [5, 122, 98, 1, 123, 99], [7, 73, 45, 3, 74, 46], [15, 43, 19, 2, 44, 20], [3, 45, 15, 13, 46, 16],
+      [1, 135, 107, 5, 136, 108], [10, 74, 46, 1, 75, 47], [1, 50, 22, 15, 51, 23], [2, 42, 14, 17, 43, 15],
+      [5, 150, 120, 1, 151, 121], [9, 69, 43, 4, 70, 44], [17, 50, 22, 1, 51, 23], [2, 42, 14, 19, 43, 15],
+      [3, 141, 113, 4, 142, 114], [3, 70, 44, 11, 71, 45], [17, 47, 21, 4, 48, 22], [9, 39, 13, 16, 40, 14],
+      [3, 135, 107, 5, 136, 108], [3, 67, 41, 13, 68, 42], [15, 54, 24, 5, 55, 25], [15, 43, 15, 10, 44, 16],
+      [4, 144, 116, 4, 145, 117], [17, 68, 42], [17, 50, 22, 6, 51, 23], [19, 46, 16, 6, 47, 17],
+      [2, 139, 111, 7, 140, 112], [17, 74, 46], [7, 54, 24, 16, 55, 25], [34, 37, 13],
+      [4, 151, 121, 5, 152, 122], [4, 75, 47, 14, 76, 48], [11, 54, 24, 14, 55, 25], [16, 45, 15, 14, 46, 16],
+      [6, 147, 117, 4, 148, 118], [6, 73, 45, 14, 74, 46], [11, 54, 24, 16, 55, 25], [30, 46, 16, 2, 47, 17],
+      [8, 132, 106, 4, 133, 107], [8, 75, 47, 13, 76, 48], [7, 54, 24, 22, 55, 25], [22, 45, 15, 13, 46, 16],
+      [10, 142, 114, 2, 143, 115], [19, 74, 46, 4, 75, 47], [28, 50, 22, 6, 51, 23], [33, 46, 16, 4, 47, 17],
+      [8, 152, 122, 4, 153, 123], [22, 73, 45, 3, 74, 46], [8, 53, 23, 26, 54, 24], [12, 45, 15, 28, 46, 16],
+      [3, 147, 117, 10, 148, 118], [3, 73, 45, 23, 74, 46], [4, 54, 24, 31, 55, 25], [11, 45, 15, 31, 46, 16],
+      [7, 146, 116, 7, 147, 117], [21, 73, 45, 7, 74, 46], [1, 53, 23, 37, 54, 24], [19, 45, 15, 26, 46, 16],
+      [5, 145, 115, 10, 146, 116], [19, 75, 47, 10, 76, 48], [15, 54, 24, 25, 55, 25], [23, 45, 15, 25, 46, 16],
+      [13, 145, 115, 3, 146, 116], [2, 74, 46, 29, 75, 47], [42, 54, 24, 1, 55, 25], [23, 45, 15, 28, 46, 16],
+      [17, 145, 115], [10, 74, 46, 23, 75, 47], [10, 54, 24, 35, 55, 25], [19, 45, 15, 35, 46, 16],
+      [17, 145, 115, 1, 146, 116], [14, 74, 46, 21, 75, 47], [29, 54, 24, 19, 55, 25], [11, 45, 15, 46, 46, 16],
+      [13, 145, 115, 6, 146, 116], [14, 74, 46, 23, 75, 47], [44, 54, 24, 7, 55, 25], [59, 46, 16, 1, 47, 17],
+      [12, 151, 121, 7, 152, 122], [12, 75, 47, 26, 76, 48], [39, 54, 24, 14, 55, 25], [22, 45, 15, 41, 46, 16],
+      [6, 151, 121, 14, 152, 122], [6, 75, 47, 34, 76, 48], [46, 54, 24, 10, 55, 25], [2, 45, 15, 64, 46, 16],
+      [17, 152, 122, 4, 153, 123], [29, 74, 46, 14, 75, 47], [49, 54, 24, 10, 55, 25], [24, 45, 15, 46, 46, 16],
+      [4, 152, 122, 18, 153, 123], [13, 74, 46, 32, 75, 47], [48, 54, 24, 14, 55, 25], [42, 45, 15, 32, 46, 16],
+      [20, 147, 117, 4, 148, 118], [40, 75, 47, 7, 76, 48], [43, 54, 24, 22, 55, 25], [10, 45, 15, 67, 46, 16],
+      [19, 148, 118, 6, 149, 119], [18, 75, 47, 31, 76, 48], [34, 54, 24, 34, 55, 25], [20, 45, 15, 61, 46, 16]
+    ];
+
+    var qrRSBlock = function(totalCount, dataCount) {
+      var _this = {};
+      _this.totalCount = totalCount;
+      _this.dataCount = dataCount;
+      return _this;
+    };
+
+    var _this = {};
+
+    var getRsBlockTable = function(typeNumber, errorCorrectionLevel) {
+
+      switch(errorCorrectionLevel) {
+      case QRErrorCorrectionLevel.L :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 0];
+      case QRErrorCorrectionLevel.M :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 1];
+      case QRErrorCorrectionLevel.Q :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 2];
+      case QRErrorCorrectionLevel.H :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 3];
+      default :
+        return undefined;
+      }
+    };
+
+    _this.getRSBlocks = function(typeNumber, errorCorrectionLevel) {
+
+      var rsBlock = getRsBlockTable(typeNumber, errorCorrectionLevel);
+
+      if (typeof rsBlock == 'undefined') {
+        throw new Error('bad rs block @ typeNumber:' + typeNumber +
+            '/errorCorrectionLevel:' + errorCorrectionLevel);
+      }
+
+      var length = rsBlock.length / 3;
+
+      var list = new Array();
+
+      for (var i = 0; i < length; i += 1) {
+
+        var count = rsBlock[i * 3 + 0];
+        var totalCount = rsBlock[i * 3 + 1];
+        var dataCount = rsBlock[i * 3 + 2];
+
+        for (var j = 0; j < count; j += 1) {
+          list.push(qrRSBlock(totalCount, dataCount) );
+        }
+      }
+
+      return list;
+    };
+
+    return _this;
+  }();
+
+  var qrBitBuffer = function() {
+
+    var _buffer = new Array();
+    var _length = 0;
+
+    var _this = {};
+
+    _this.getBuffer = function() {
+      return _buffer;
+    };
+
+    _this.getAt = function(index) {
+      var bufIndex = Math.floor(index / 8);
+      return ( (_buffer[bufIndex] >>> (7 - index % 8) ) & 1) == 1;
+    };
+
+    _this.put = function(num, length) {
+      for (var i = 0; i < length; i += 1) {
+        _this.putBit( ( (num >>> (length - i - 1) ) & 1) == 1);
+      }
+    };
+
+    _this.getLengthInBits = function() {
+      return _length;
+    };
+
+    _this.putBit = function(bit) {
+
+      var bufIndex = Math.floor(_length / 8);
+      if (_buffer.length <= bufIndex) {
+        _buffer.push(0);
+      }
+
+      if (bit) {
+        _buffer[bufIndex] |= (0x80 >>> (_length % 8) );
+      }
+
+      _length += 1;
+    };
+
+    return _this;
+  };
+
+  var qrNumber = function(data) {
+
+    var _mode = QRMode.MODE_NUMBER;
+    var _data = data;
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _data.length;
+    };
+
+    _this.write = function(buffer) {
+
+      var data = _data;
+
+      var i = 0;
+
+      while (i + 2 < data.length) {
+        buffer.put(strToNum(data.substring(i, i + 3) ), 10);
+        i += 3;
+      }
+
+      if (i < data.length) {
+        if (data.length - i == 1) {
+          buffer.put(strToNum(data.substring(i, i + 1) ), 4);
+        } else if (data.length - i == 2) {
+          buffer.put(strToNum(data.substring(i, i + 2) ), 7);
+        }
+      }
+    };
+
+    var strToNum = function(s) {
+      var num = 0;
+      for (var i = 0; i < s.length; i += 1) {
+        num = num * 10 + chatToNum(s.charAt(i) );
+      }
+      return num;
+    };
+
+    var chatToNum = function(c) {
+      if ('0' <= c && c <= '9') {
+        return c.charCodeAt(0) - '0'.charCodeAt(0);
+      }
+      throw 'illegal char :' + c;
+    };
+
+    return _this;
+  };
+
+  var qrAlphaNum = function(data) {
+
+    var _mode = QRMode.MODE_ALPHA_NUM;
+    var _data = data;
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _data.length;
+    };
+
+    _this.write = function(buffer) {
+
+      var s = _data;
+
+      var i = 0;
+
+      while (i + 1 < s.length) {
+        buffer.put(
+          getCode(s.charAt(i) ) * 45 +
+          getCode(s.charAt(i + 1) ), 11);
+        i += 2;
+      }
+
+      if (i < s.length) {
+        buffer.put(getCode(s.charAt(i) ), 6);
+      }
+    };
+
+    var getCode = function(c) {
+
+      if ('0' <= c && c <= '9') {
+        return c.charCodeAt(0) - '0'.charCodeAt(0);
+      } else if ('A' <= c && c <= 'Z') {
+        return c.charCodeAt(0) - 'A'.charCodeAt(0) + 10;
+      } else {
+        switch (c) {
+        case ' ' : return 36;
+        case '$' : return 37;
+        case '%' : return 38;
+        case '*' : return 39;
+        case '+' : return 40;
+        case '-' : return 41;
+        case '.' : return 42;
+        case '/' : return 43;
+        case ':' : return 44;
+        default :
+          throw 'illegal char :' + c;
+        }
+      }
+    };
+
+    return _this;
+  };
+
+  var qr8BitByte = function(data) {
+
+    var _mode = QRMode.MODE_8BIT_BYTE;
+    var _data = data;
+    var _bytes = qrcode.stringToBytes(data);
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _bytes.length;
+    };
+
+    _this.write = function(buffer) {
+      for (var i = 0; i < _bytes.length; i += 1) {
+        buffer.put(_bytes[i], 8);
+      }
+    };
+
+    return _this;
+  };
+
+  var qrKanji = function(data) {
+    var _mode = QRMode.MODE_KANJI;
+    var _data = data;
+    var _bytes = qrcode.stringToBytes(data);
+    var _this = {};
+    _this.getMode = function() { return _mode; };
+    _this.getLength = function(buffer) { return ~~(_bytes.length / 2); };
+    _this.write = function(buffer) {
+      var data = _bytes;
+      var i = 0;
+      while (i + 1 < data.length) {
+        var c = ( (0xff & data[i]) << 8) | (0xff & data[i + 1]);
+        if (0x8140 <= c && c <= 0x9FFC) { c -= 0x8140; }
+        else if (0xE040 <= c && c <= 0xEBBF) { c -= 0xC140; }
+        else { throw 'illegal char at ' + (i + 1) + '/' + c; }
+        c = ( (c >>> 8) & 0xff) * 0xC0 + (c & 0xff);
+        buffer.put(c, 13);
+        i += 2;
+      }
+      if (i < data.length) { throw 'illegal char at ' + (i + 1); }
+    };
+    return _this;
+  };
+
+  return qrcode;
+}();
+
+</script>
+<style>
+  :root{
+    --ink:#21262B;
+    --ink-soft:#3B4249;
+    --paper:#EEF0EA;
+    --paper-card:#FBFBF8;
+    --line:#D8DACF;
+    --accent:#2B4C59;
+    --accent-soft:#DCE7E9;
+    --ok:#3F7D53;
+    --ok-bg:#E1EEE3;
+    --low:#C97A2B;
+    --low-bg:#F5E4CE;
+    --crit:#B23A2E;
+    --crit-bg:#F5DAD6;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .app{max-width:480px;margin:0 auto;min-height:100vh;padding-bottom:96px;}
+  header{
+    background:var(--ink);
+    color:var(--paper);
+    padding:22px 18px 18px;
+    position:sticky;top:0;z-index:5;
+  }
+  .eyebrow{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:#9AA6AC;margin:0 0 2px;
+  }
+  #syncBadge.live{color:#8CC9A0;}
+  h1{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:700;font-size:30px;letter-spacing:.01em;
+    margin:0 0 14px;text-transform:uppercase;
+  }
+  .stats{display:flex;gap:10px;}
+  .stat{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:8px 10px;}
+  .stat b{display:block;font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;}
+  .stat span{font-size:11px;color:#9AA6AC;}
+  .stat.warn b{color:#E3A85C;}
+  .stat.crit b{color:#E28275;}
+  .stat.out b{color:#8FB3C9;}
+
+  .role-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .role-controls{display:flex;align-items:center;gap:8px;}
+  .role-badge{
+    font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--paper);background:rgba(255,255,255,.1);
+    border:1px solid rgba(255,255,255,.18);padding:4px 9px;border-radius:999px;
+  }
+  .role-badge.admin{background:#E3A85C;color:#3B2A0E;border-color:#E3A85C;}
+  .role-switch{
+    background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:var(--paper);
+    font-size:11px;padding:6px 11px;border-radius:999px;cursor:pointer;font-family:'Inter',sans-serif;
+  }
+
+  .scan-panel{
+    margin:14px 18px 0;background:var(--paper-card);border:1px solid var(--line);
+    border-radius:12px;padding:12px 14px 14px;
+  }
+  .scan-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+  .scan-label{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);}
+  .mode-toggle{display:flex;background:var(--paper);border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+  .mode-toggle button{
+    border:none;background:transparent;padding:6px 12px;font-size:12px;font-weight:600;
+    color:var(--ink-soft);cursor:pointer;font-family:'Inter',sans-serif;
+  }
+  .mode-toggle button.active.in{background:var(--ok);color:#fff;}
+  .mode-toggle button.active.out{background:var(--crit);color:#fff;}
+  .mode-toggle button:disabled{opacity:.35;cursor:not-allowed;}
+  .scan-row{display:flex;gap:8px;align-items:center;}
+  .scan-row input[type=text]{
+    flex:1;height:44px;border-radius:9px;border:1px solid var(--line);
+    background:var(--paper);padding:0 12px;font-size:15px;color:var(--ink);
+    font-family:'JetBrains Mono',monospace;letter-spacing:.02em;
+  }
+  .scan-row input:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  .qty-mini{display:flex;align-items:center;border:1px solid var(--line);border-radius:9px;background:var(--paper);}
+  .qty-mini button{width:32px;height:44px;border:none;background:transparent;font-size:16px;color:var(--ink);cursor:pointer;}
+  .qty-mini .n{min-width:22px;text-align:center;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;}
+
+  .qty-open-btn{
+    flex:0 0 auto;min-width:58px;height:44px;border-radius:9px;border:1px solid var(--line);
+    background:var(--paper);cursor:pointer;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;line-height:1.1;padding:0 8px;
+  }
+  .qty-open-n{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px;color:var(--ink);}
+  .qty-open-label{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);}
+
+  .keypad-display{
+    font-family:'JetBrains Mono',monospace;font-size:36px;font-weight:700;text-align:center;
+    background:var(--paper-card);border:1px solid var(--line);border-radius:10px;
+    padding:14px;margin-bottom:16px;color:var(--ink);
+  }
+  .keypad-grid{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;
+  }
+  .keypad-grid .key{
+    height:56px;border-radius:10px;border:1px solid var(--line);background:var(--paper-card);
+    font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;color:var(--ink);cursor:pointer;
+  }
+  .keypad-grid .key:active{background:var(--accent-soft);}
+  .keypad-grid .key.ghost-key{color:var(--ink-soft);font-size:16px;}
+  .cam-btn{
+    width:44px;height:44px;flex:0 0 auto;border-radius:9px;border:1px solid var(--line);
+    background:var(--accent);color:#fff;font-size:18px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .scan-hint{font-size:11px;color:var(--ink-soft);margin-top:8px;}
+
+  .controls{padding:14px 18px 4px;position:sticky;top:0;background:var(--paper);z-index:4;}
+  .search-row{display:flex;gap:8px;}
+  .search{
+    flex:1;width:100%;height:42px;border-radius:10px;border:1px solid var(--line);
+    background:var(--paper-card);padding:0 14px;font-size:15px;color:var(--ink);
+    font-family:'Inter',sans-serif;
+  }
+  .search:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  .export-btn{
+    flex:0 0 auto;width:42px;height:42px;border-radius:10px;border:1px solid var(--line);
+    background:var(--paper-card);color:var(--ink-soft);font-size:17px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .export-btn:active{background:var(--accent-soft);color:var(--accent);}
+  .chips{display:flex;gap:8px;overflow-x:auto;padding:12px 2px 6px;scrollbar-width:none;}
+  .chips::-webkit-scrollbar{display:none;}
+  .chip{
+    flex:0 0 auto;padding:6px 14px;border-radius:999px;border:1px solid var(--line);
+    background:var(--paper-card);font-size:13px;font-weight:500;color:var(--ink-soft);
+    cursor:pointer;white-space:nowrap;
+  }
+  .chip.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+  .list{padding:6px 18px 10px;display:flex;flex-direction:column;gap:10px;}
+  .empty{
+    text-align:center;padding:60px 20px;color:var(--ink-soft);
+  }
+  .empty p{margin:4px 0;}
+  .empty .big{font-family:'Barlow Condensed',sans-serif;font-size:22px;text-transform:uppercase;color:var(--ink);}
+
+  .card{
+    background:var(--paper-card);border:1px solid var(--line);border-radius:12px;
+    padding:14px 14px 12px;position:relative;overflow:hidden;cursor:pointer;
+  }
+  .card::before{
+    content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--tag,var(--ok));
+  }
+  .card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:2px;}
+  .thumb{
+    flex:0 0 auto;width:46px;height:46px;border-radius:10px;background:var(--accent-soft);
+    display:flex;align-items:center;justify-content:center;overflow:hidden;
+    font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;color:var(--accent);
+  }
+  .thumb img{width:100%;height:100%;object-fit:cover;}
+  .info-block{flex:1;min-width:0;}
+  .name{font-size:16px;font-weight:600;line-height:1.25;}
+  .cat{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em;font-family:'JetBrains Mono',monospace;}
+  .barcode-tag{font-size:10px;color:var(--ink-soft);font-family:'JetBrains Mono',monospace;margin-top:2px;}
+
+  .confirm-item{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+  .confirm-photo{
+    flex:0 0 auto;width:64px;height:64px;border-radius:12px;background:var(--accent-soft);
+    display:flex;align-items:center;justify-content:center;overflow:hidden;
+    font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px;color:var(--accent);
+  }
+  .confirm-photo img{width:100%;height:100%;object-fit:cover;}
+  .confirm-name{font-size:17px;font-weight:600;}
+  .confirm-sub{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .confirm-delta{
+    text-align:center;font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;
+    background:var(--paper-card);border:1px solid var(--line);border-radius:10px;
+    padding:14px;margin-bottom:16px;
+  }
+  .confirm-delta .in{color:var(--ok);}
+  .confirm-delta .out{color:var(--crit);}
+  .btn.primary.out{background:var(--crit);}
+  .btn.primary.in{background:var(--ok);}
+  .qty-wrap{display:flex;align-items:center;gap:10px;flex:0 0 auto;}
+  .stepper{display:flex;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:8px;}
+  .stepper button{
+    width:32px;height:32px;border:none;background:transparent;font-size:18px;color:var(--ink);
+    cursor:pointer;font-family:'Inter',sans-serif;
+  }
+  .stepper button:active{background:var(--accent-soft);}
+  .stepper button:disabled{opacity:.3;cursor:not-allowed;}
+  .stepper .n{
+    min-width:40px;text-align:center;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;
+  }
+
+  .gauge-row{margin-top:10px;}
+  .gauge{position:relative;height:8px;background:var(--line);border-radius:4px;overflow:visible;}
+  .gauge .fill{height:100%;border-radius:4px;background:var(--tag,var(--ok));transition:width .2s;}
+  .gauge .tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.35;}
+  .gauge-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-soft);margin-top:5px;font-family:'JetBrains Mono',monospace;}
+  .status-label{font-weight:700;color:var(--tag,var(--ok));}
+
+  .card-actions{display:flex;justify-content:flex-end;gap:16px;margin-top:8px;}
+  .del{
+    border:none;background:none;color:var(--ink-soft);font-size:12px;cursor:pointer;
+    font-family:'Inter',sans-serif;text-decoration:underline;
+  }
+  .del:disabled{opacity:.35;cursor:not-allowed;text-decoration:none;}
+
+  .fab{
+    position:fixed;right:50%;transform:translateX(212px);bottom:26px;
+    width:56px;height:56px;border-radius:50%;background:var(--accent);color:#fff;
+    border:none;font-size:28px;box-shadow:0 6px 16px rgba(33,38,43,.35);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;z-index:6;
+  }
+  .fab:disabled{background:var(--ink-soft);opacity:.5;cursor:not-allowed;box-shadow:none;}
+  @media (max-width:480px){.fab{right:20px;transform:none;}}
+
+  .sheet-overlay{
+    position:fixed;inset:0;background:rgba(33,38,43,.5);display:none;
+    align-items:flex-end;justify-content:center;z-index:10;
+  }
+  .sheet-overlay.open{display:flex;}
+  .sheet{
+    background:var(--paper);width:100%;max-width:480px;border-radius:18px 18px 0 0;
+    padding:20px 20px 28px;max-height:88vh;overflow-y:auto;
+  }
+  .sheet h2{
+    font-family:'Barlow Condensed',sans-serif;font-size:22px;text-transform:uppercase;
+    margin:0 0 16px;
+  }
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;}
+  .field input{
+    width:100%;height:42px;border-radius:9px;border:1px solid var(--line);
+    background:var(--paper-card);padding:0 12px;font-size:15px;color:var(--ink);
+    font-family:'Inter',sans-serif;
+  }
+  .field input:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  .row2{display:flex;gap:10px;}
+  .row2 .field{flex:1;}
+  .sheet-actions{display:flex;gap:10px;margin-top:6px;}
+  .btn{
+    flex:1;height:46px;border-radius:10px;border:none;font-size:15px;font-weight:600;cursor:pointer;
+    font-family:'Inter',sans-serif;
+  }
+  .btn.primary{background:var(--accent);color:#fff;}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);}
+  .btn.danger{background:transparent;border:1px solid var(--crit);color:var(--crit);}
+  .err{color:var(--crit);font-size:12px;margin:-8px 0 12px;display:none;}
+  .loading{padding:60px 20px;text-align:center;color:var(--ink-soft);font-size:14px;}
+
+  .toast{
+    position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);
+    background:var(--ink);color:var(--paper);padding:10px 18px;border-radius:10px;
+    font-size:13px;font-weight:500;z-index:20;opacity:0;pointer-events:none;
+    transition:opacity .2s, transform .2s;max-width:90%;text-align:center;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast.ok{border-left:4px solid var(--ok);}
+  .toast.crit{border-left:4px solid #E28275;}
+
+  .cam-overlay{
+    position:fixed;inset:0;background:#000;display:none;z-index:30;
+    flex-direction:column;align-items:center;justify-content:center;
+  }
+  .cam-overlay.open{display:flex;}
+  .cam-overlay video{width:100%;max-height:70vh;object-fit:cover;}
+  .cam-frame{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:80%;max-width:320px;height:120px;border:2px solid #fff;border-radius:10px;
+    box-shadow:0 0 0 2000px rgba(0,0,0,.45);
+  }
+  .cam-msg{color:#fff;font-size:13px;text-align:center;padding:16px;max-width:320px;}
+  .cam-close{
+    position:absolute;top:20px;right:20px;width:40px;height:40px;border-radius:50%;
+    background:rgba(255,255,255,.15);color:#fff;border:none;font-size:20px;cursor:pointer;
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <header>
+    <div class="role-row">
+      <p class="eyebrow" id="dateLabel" style="margin:0;"><span id="dateLabelText">atelier</span> · <span id="syncBadge" style="opacity:.7;">stockage local</span></p>
+      <div class="role-controls">
+        <button class="role-switch" id="refreshBtn" title="Actualiser le stock" style="display:none;">⟳</button>
+        <span class="role-badge" id="roleBadge">Opérateur</span>
+        <button class="role-switch" id="roleSwitchBtn">Mode administrateur</button>
+      </div>
+    </div>
+    <h1>Stock consommables</h1>
+    <div class="stats">
+      <div class="stat"><b id="statTotal">0</b><span>Références</span></div>
+      <div class="stat warn"><b id="statLow">0</b><span>Bas</span></div>
+      <div class="stat crit"><b id="statCrit">0</b><span>Épuisé</span></div>
+      <div class="stat out"><b id="statMonthOut">0</b><span>Sorties (mois)</span></div>
+    </div>
+  </header>
+
+  <div class="scan-panel">
+    <div class="scan-top">
+      <span class="scan-label">Scan QR code</span>
+      <div class="mode-toggle">
+        <button id="modeIn" class="active in">Entrée</button>
+        <button id="modeOut" class="out">Sortie</button>
+      </div>
+    </div>
+    <div class="scan-row">
+      <input type="text" id="barcodeInput" placeholder="Scanner ou saisir un code…" autocomplete="off">
+      <button class="qty-open-btn" id="qtyOpenBtn" aria-label="Choisir la quantité">
+        <span class="qty-open-n" id="scanQtyN">1</span>
+        <span class="qty-open-label">qté</span>
+      </button>
+      <button class="cam-btn" id="camBtn" aria-label="Scanner avec la caméra">◎</button>
+    </div>
+    <p class="scan-hint">Douchette USB/Bluetooth : vise le champ et scanne. Sinon utilise la caméra ou saisis le code à la main + Entrée.</p>
+  </div>
+
+  <div class="controls">
+    <div class="search-row">
+      <input class="search" id="search" type="text" placeholder="Rechercher un consommable…">
+      <button class="export-btn" id="importBtn" aria-label="Mettre à jour le catalogue" title="Mettre à jour le catalogue Voortman (conserve le stock)" style="display:none;">⇪</button>
+      <button class="export-btn" id="removeObsoleteBtn" aria-label="Retirer les références obsolètes" title="Retirer les 2 références XPR retirées du fichier" style="display:none;">🗑</button>
+      <button class="export-btn" id="exportBtn" aria-label="Exporter en Excel" title="Exporter en Excel (alertes surlignées)">⭳</button>
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div class="list" id="list">
+    <div class="loading">Chargement du stock…</div>
+  </div>
+
+  <button class="fab" id="fabAdd" aria-label="Ajouter un consommable">+</button>
+
+  <div class="sheet-overlay" id="overlay">
+    <div class="sheet">
+      <h2 id="sheetTitle">Nouveau consommable</h2>
+      <div class="field">
+        <label for="fName">Nom</label>
+        <input id="fName" type="text" placeholder="Ex. Gants nitrile M">
+      </div>
+      <div class="field">
+        <label for="fCat">Catégorie</label>
+        <input id="fCat" type="text" list="catList" placeholder="Ex. Plaquette, Fraise…">
+        <datalist id="catList">
+          <option value="Porte Outil">
+          <option value="Forêt TIAN">
+          <option value="Taraud">
+          <option value="BUSE">
+          <option value="ELECTRODES">
+          <option value="DIFFUSEUR">
+          <option value="PROTECTEUR">
+          <option value="CAPE DE MAINTIEN">
+          <option value="ARC Writer">
+          <option value="Divers">
+          <option value="Plaquettes">
+          <option value="Fraises Carbure">
+          <option value="Lames">
+          <option value="Lamage">
+          <option value="KSEM+">
+          <option value="Marquage">
+          <option value="Adaptateurs">
+        </datalist>
+      </div>
+      <div class="field">
+        <label for="fQty">Quantité</label>
+        <input id="fQty" type="number" min="0" placeholder="0">
+      </div>
+      <div class="field">
+        <label for="fSeuil">Seuil d'alerte</label>
+        <input id="fSeuil" type="number" min="0" placeholder="Ex. 5">
+      </div>
+      <div class="field">
+        <label for="fBarcode">Code QR</label>
+        <input id="fBarcode" type="text" placeholder="Généré automatiquement si laissé vide">
+      </div>
+      <p style="font-size:11px;color:var(--ink-soft);margin:-10px 0 14px;">Le QR code s'affichera automatiquement une fois l'article enregistré.</p>
+      <p class="err" id="formErr">Indique au moins un nom et une quantité.</p>
+      <div class="sheet-actions">
+        <button class="btn ghost" id="cancelBtn">Annuler</button>
+        <button class="btn primary" id="saveBtn">Enregistrer</button>
+      </div>
+      <div class="sheet-actions" id="editOnlyActions" style="display:none;margin-top:10px;">
+        <button class="btn danger" id="deleteFromSheetBtn">Supprimer ce consommable</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="cam-overlay" id="camOverlay">
+    <button class="cam-close" id="camClose" aria-label="Fermer la caméra">×</button>
+    <video id="camVideo" autoplay playsinline muted></video>
+    <div class="cam-frame"></div>
+    <p class="cam-msg" id="camMsg">Cadre le QR code dans le rectangle.</p>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="sheet-overlay" id="pinOverlay">
+    <div class="sheet">
+      <h2>Code administrateur</h2>
+      <div class="field">
+        <label for="pinInput">Code PIN</label>
+        <input id="pinInput" type="password" inputmode="numeric" maxlength="6" placeholder="••••">
+      </div>
+      <p class="err" id="pinErr">Code incorrect.</p>
+      <div class="sheet-actions">
+        <button class="btn ghost" id="pinCancel">Annuler</button>
+        <button class="btn primary" id="pinConfirm">Valider</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="keypadOverlay">
+    <div class="sheet">
+      <h2>Quantité</h2>
+      <div class="keypad-display" id="keypadDisplay">1</div>
+      <div class="keypad-grid">
+        <button class="key" data-key="1">1</button>
+        <button class="key" data-key="2">2</button>
+        <button class="key" data-key="3">3</button>
+        <button class="key" data-key="4">4</button>
+        <button class="key" data-key="5">5</button>
+        <button class="key" data-key="6">6</button>
+        <button class="key" data-key="7">7</button>
+        <button class="key" data-key="8">8</button>
+        <button class="key" data-key="9">9</button>
+        <button class="key ghost-key" data-key="clear">C</button>
+        <button class="key" data-key="0">0</button>
+        <button class="key ghost-key" data-key="back">⌫</button>
+      </div>
+      <div class="sheet-actions">
+        <button class="btn ghost" id="keypadCancel">Annuler</button>
+        <button class="btn primary" id="keypadValidate">Valider</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="confirmOverlay">
+    <div class="sheet">
+      <h2 id="confirmTitle">Confirmer la sortie</h2>
+      <div class="confirm-item">
+        <div class="confirm-photo" id="confirmPhoto"></div>
+        <div>
+          <div class="confirm-name" id="confirmName"></div>
+          <div class="confirm-sub" id="confirmSub"></div>
+        </div>
+      </div>
+      <div class="confirm-delta" id="confirmDelta"></div>
+      <div class="sheet-actions">
+        <button class="btn ghost" id="confirmCancel">Annuler</button>
+        <button class="btn primary" id="confirmValidate">Valider la sortie</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="qrLabelOverlay">
+    <div class="sheet" style="text-align:center;">
+      <h2 id="qrLabelTitle">Étiquette QR</h2>
+      <div id="qrLabelCode" style="display:flex;justify-content:center;align-items:center;margin:10px 0 6px;width:200px;height:200px;background:#fff;border-radius:10px;border:1px solid var(--line);margin-left:auto;margin-right:auto;overflow:hidden;"></div>
+      <p style="font-size:12px;color:var(--ink-soft);font-family:'JetBrains Mono',monospace;margin:0 0 18px;" id="qrLabelValue"></p>
+      <div class="sheet-actions">
+        <button class="btn ghost" id="qrLabelClose">Fermer</button>
+        <a class="btn primary" id="qrLabelDownload" href="#" download="qr-produit.png" target="_blank" rel="noopener" style="text-decoration:none;display:flex;align-items:center;justify-content:center;">Télécharger (PNG)</a>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// Configuration Firebase — pour synchroniser le stock entre tous
+// les téléphones. Colle ici la configuration de ton projet
+// Firebase (Console Firebase > Paramètres du projet > Général
+// > Tes applications > config). Tant que ce n'est pas rempli,
+// l'appli fonctionne en local uniquement (un stock par appareil).
+// ============================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyBSekxYbg4-Kv5ThH894UUtuCyofL5gcqs",
+  authDomain: "stock-consommables.firebaseapp.com",
+  databaseURL: "https://stock-consommables-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "stock-consommables",
+  storageBucket: "stock-consommables.firebasestorage.app",
+  messagingSenderId: "453329032966",
+  appId: "1:453329032966:web:4b17436eb5f765a43eb087"
+};
+
+let fbEnabled = false;
+let fbRef = null;
+let fbMovementsRef = null;
+
+function initFirebase(){
+  try{
+    if(!firebaseConfig.apiKey || firebaseConfig.apiKey.indexOf('COLLE_TA_CLE') !== -1){
+      return; // configuration non renseignée -> mode local uniquement
+    }
+    if(typeof firebase === 'undefined') return;
+    firebase.initializeApp(firebaseConfig);
+    fbRef = firebase.database().ref(STORAGE_KEY);
+    fbMovementsRef = firebase.database().ref(MOVEMENTS_KEY);
+    fbEnabled = true;
+  }catch(e){
+    fbEnabled = false;
+    console.error('Firebase indisponible, retour au stockage local', e);
+  }
+}
+
+const STORAGE_KEY = 'stock-items';
+const MOVEMENTS_KEY = 'stock-movements';
+let movements = [];
+let items = [];
+let activeCategory = 'Toutes';
+let searchTerm = '';
+let editingId = null;
+let scanMode = 'in';
+let scanQty = 1;
+let camStream = null;
+const ADMIN_PIN = '1234';
+let role = 'operator';
+
+const $ = (id) => document.getElementById(id);
+
+function uid(){ return 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+function statusOf(item){
+  const q = Number(item.qty);
+  const s = Number(item.seuil) || 0;
+  if(q <= 0) return 'crit';
+  if(q <= s) return 'low';
+  return 'ok';
+}
+
+const statusMeta = {
+  ok:   { label:'OK',      color:'var(--ok)'   },
+  low:  { label:'Bas',     color:'var(--low)'  },
+  crit: { label:'Épuisé',  color:'var(--crit)' }
+};
+
+function hasClaudeStorage(){
+  return typeof window !== 'undefined' && !!window.storage && typeof window.storage.get === 'function';
+}
+
+function updateSyncBadge(){
+  const el = $('syncBadge');
+  if(!el) return;
+  if(fbEnabled){
+    el.textContent = 'synchronisé';
+    el.classList.add('live');
+  }else{
+    el.textContent = 'stockage local';
+    el.classList.remove('live');
+  }
+}
+
+async function loadItems(){
+  try{
+    if(fbEnabled && fbRef){
+      const snap = await fbRef.once('value');
+      items = snap.val() || [];
+    }else if(hasClaudeStorage()){
+      const res = await window.storage.get(STORAGE_KEY, false);
+      items = res && res.value ? JSON.parse(res.value) : [];
+    }else{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      items = raw ? JSON.parse(raw) : [];
+    }
+  }catch(e){
+    items = [];
+  }
+  render();
+}
+
+async function saveItems(){
+  try{
+    if(fbEnabled && fbRef){
+      await fbRef.set(items);
+      // on garde aussi une copie locale pour un chargement instantané / hors-ligne
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }catch(e){}
+    }else{
+      const payload = JSON.stringify(items);
+      if(hasClaudeStorage()){
+        await window.storage.set(STORAGE_KEY, payload, false);
+      }else{
+        localStorage.setItem(STORAGE_KEY, payload);
+      }
+    }
+  }catch(e){
+    console.error('Erreur de sauvegarde', e);
+  }
+}
+
+function startRealtimeSync(){
+  if(!fbEnabled || !fbRef) return;
+  fbRef.on('value', (snap) => {
+    items = snap.val() || [];
+    render();
+  });
+}
+
+async function loadMovements(){
+  try{
+    if(fbEnabled && fbMovementsRef){
+      const snap = await fbMovementsRef.once('value');
+      movements = snap.val() || [];
+    }else if(hasClaudeStorage()){
+      const res = await window.storage.get(MOVEMENTS_KEY, false);
+      movements = res && res.value ? JSON.parse(res.value) : [];
+    }else{
+      const raw = localStorage.getItem(MOVEMENTS_KEY);
+      movements = raw ? JSON.parse(raw) : [];
+    }
+  }catch(e){
+    movements = [];
+  }
+  updateMonthlyStat();
+}
+
+async function saveMovements(){
+  try{
+    if(fbEnabled && fbMovementsRef){
+      await fbMovementsRef.set(movements);
+      try{ localStorage.setItem(MOVEMENTS_KEY, JSON.stringify(movements)); }catch(e){}
+    }else{
+      const payload = JSON.stringify(movements);
+      if(hasClaudeStorage()){
+        await window.storage.set(MOVEMENTS_KEY, payload, false);
+      }else{
+        localStorage.setItem(MOVEMENTS_KEY, payload);
+      }
+    }
+  }catch(e){
+    console.error('Erreur de sauvegarde des mouvements', e);
+  }
+}
+
+function startMovementsRealtimeSync(){
+  if(!fbEnabled || !fbMovementsRef) return;
+  fbMovementsRef.on('value', (snap) => {
+    movements = snap.val() || [];
+    updateMonthlyStat();
+  });
+}
+
+async function logMovement(item, mode, qty){
+  movements.push({
+    ts: Date.now(),
+    name: item.name,
+    cat: item.cat || 'Autre',
+    barcode: item.barcode || '',
+    mode,
+    qty
+  });
+  // on garde un historique raisonnable (12 derniers mois) pour ne pas alourdir le stockage
+  const cutoff = Date.now() - (365 * 24 * 60 * 60 * 1000);
+  movements = movements.filter(m => m.ts >= cutoff);
+  await saveMovements();
+  updateMonthlyStat();
+}
+
+function monthlyOutTotal(){
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  return movements
+    .filter(mv => mv.mode === 'out' && (() => { const d = new Date(mv.ts); return d.getFullYear() === y && d.getMonth() === m; })())
+    .reduce((sum, mv) => sum + (Number(mv.qty) || 0), 0);
+}
+
+function updateMonthlyStat(){
+  const el = $('statMonthOut');
+  if(el) el.textContent = monthlyOutTotal();
+}
+
+const DEFAULT_CATS = ["Porte Outil", "Forêt TIAN", "Taraud", "BUSE", "ELECTRODES", "DIFFUSEUR", "PROTECTEUR", "CAPE DE MAINTIEN", "ARC Writer", "Divers", "Plaquettes", "Fraises Carbure", "Lames", "Lamage", "KSEM+", "Marquage", "Adaptateurs"];
+
+const OBSOLETE_BARCODES = ["008-5729", "008-5728"];
+
+async function removeObsoleteRefs(){
+  const before = items.length;
+  items = items.filter(i => !OBSOLETE_BARCODES.includes((i.barcode||'').trim()));
+  const removed = before - items.length;
+  if(removed > 0){
+    await saveItems();
+    render();
+  }
+  showToast(removed > 0 ? `${removed} référence(s) obsolète(s) retirée(s)` : 'Aucune référence obsolète trouvée', removed > 0 ? 'crit' : 'ok');
+}
+
+$('removeObsoleteBtn').addEventListener('click', () => {
+  if(role !== 'admin') return;
+  const count = items.filter(i => OBSOLETE_BARCODES.includes((i.barcode||'').trim())).length;
+  if(count === 0){ showToast('Aucune référence obsolète trouvée', 'ok'); return; }
+  const ok = confirm(`Retirer les ${count} référence(s) XPR obsolète(s) (008-5729, 008-5728) du stock ?`);
+  if(ok) removeObsoleteRefs();
+});
+
+const VOORTMAN_CATALOG = [{"name": "DRILLHOLDER L=10 xD - diam 14 - WN 16", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-6590"}, {"name": "DRILLHOLDER L=10 xD - diam 18 - WN 20", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "007-0576"}, {"name": "DRILLHOLDER L = 10 xD - diam 17,5 - WN 20", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "007-0823"}, {"name": "DRILLHOLDER L = 5 xD - diam 10 - WN16", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "007-1695"}, {"name": "DRILLHOLDER L = 5 xD - diam 11 - WN16", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-1588"}, {"name": "DRILLHOLDER L = 5 xD - diam 12 - WN16", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "007-5042"}, {"name": "DRILLHOLDER L = 5 xD - diam 13 - adapter size 16", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-1264"}, {"name": "DRILLHOLDER L = 5 xD - diam 14 - adapter size 16", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-1267"}, {"name": "DRILLHOLDER L = 5 xD - diam 15 - adapter size 20", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-1269"}, {"name": "DRILLHOLDER L = 5 xD - diam 16 - adapter size 20", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-1271"}, {"name": "DRILLHOLDER L = 3 xD - diam 17 - adapter size 20", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "002-5533"}, {"name": "DRILLHOLDER L = 3 xD - diam 17,5 - adapter size 20", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-1274"}, {"name": "DRILLHOLDER L = 3 xD - diam 18 - adapter size 20", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "002-4165"}, {"name": "DRILLHOLDER L = 3 xD - diam 19 - adapter size 25", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "002-5535"}, {"name": "DRILLHOLDER L = 3 xD - diam 20 - adapter size 25", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "002-5536"}, {"name": "DRILLHOLDER L = 3 xD - diam 21 - adapter size 25", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "002-5537"}, {"name": "DRILLHOLDER L = 3 xD - diam 22 - adapter size 25", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "002-4166"}, {"name": "DRILLHOLDER L = 3 xD - diam 23 - adapter size 25", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "002-5538"}, {"name": "DRILLHOLDER L = 3 xD - diam 24 - adapter size 25", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-6594"}, {"name": "DRILLHOLDER L = 3 xD - diam 25 - adapter size 32", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-6595"}, {"name": "DRILLHOLDER L = 3 xD - diam 26 - adapter size 32", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-6596"}, {"name": "DRILLHOLDER L = 3 xD - diam 27 - adapter size 32", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-6597"}, {"name": "DRILLHOLDER L = 3 xD - diam 28 - adapter size 32", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-6598"}, {"name": "DRILLHOLDER L = 3 xD - diam 29 - adapter size 32", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-6599"}, {"name": "DRILLHOLDER L = 3 xD - diam 30 - adapter size 32", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-6600"}, {"name": "DRILLHOLDER L = 3 xD - diam 31 - adapter size 32", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-6601"}, {"name": "DRILLHOLDER L = 3 xD - diam 32 - adapter size 32", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-6602"}, {"name": "DRILLHOLDER L = 3 xD - diam 33 - adapter size 32", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "003-7909"}, {"name": "Drill body ø34mm 3xD WN32 KSEM", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "004-4031"}, {"name": "Drill body ø35mm 3xD WN32 KSEM", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-6636"}, {"name": "Drill body ø36mm 3xD WN32 KSEM", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "004-4032"}, {"name": "Drill body ø37mm 3xD WN32 KSEM", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "006-9841"}, {"name": "Drill body ø38mm 3xD WN32 KSEM", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "004-7608"}, {"name": "Drill body ø39mm 3xD WN32 KSEM", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "006-9842"}, {"name": "Drill body ø40mm 3xD WN32 KSEM", "cat": "Porte Outil", "qty": 0, "seuil": 0, "barcode": "000-6604"}, {"name": "GARANT FORET DIN 6535 HA QUEUE CYL Ø 4,2", "cat": "Forêt TIAN", "qty": 0, "seuil": 0, "barcode": "122504 4,2"}, {"name": "GARANT FORET DIN 6535 HA QUEUE CYL Ø 5", "cat": "Forêt TIAN", "qty": 0, "seuil": 0, "barcode": "122504 5"}, {"name": "GARANT FORET DIN 6535 HA QUEUE CYL Ø 6", "cat": "Forêt TIAN", "qty": 0, "seuil": 0, "barcode": "122504 6"}, {"name": "GARANT FORET DIN 6535 HA QUEUE CYL Ø 6,8", "cat": "Forêt TIAN", "qty": 0, "seuil": 0, "barcode": "122504 6,8"}, {"name": "GARANT FORET DIN 6535 HA QUEUE CYL Ø 7", "cat": "Forêt TIAN", "qty": 0, "seuil": 0, "barcode": "122504 7"}, {"name": "GARANT FORET DIN 6535 HA QUEUE CYL Ø 8", "cat": "Forêt TIAN", "qty": 0, "seuil": 0, "barcode": "122504 8"}, {"name": "GARANT FORET DIN 6535 HA QUEUE CYL Ø 8,5", "cat": "Forêt TIAN", "qty": 0, "seuil": 0, "barcode": "122504 8,5"}, {"name": "GARANT FORET DIN 6535 HA QUEUE CYL Ø 9", "cat": "Forêt TIAN", "qty": 0, "seuil": 0, "barcode": "122504 9"}, {"name": "GARANT FORET DIN 6535 HA QUEUE CYL Ø 10", "cat": "Forêt TIAN", "qty": 0, "seuil": 0, "barcode": "122504 10"}, {"name": "GARANT FORET DIN 6535 HA QUEUE CYL Ø 10,3", "cat": "Forêt TIAN", "qty": 0, "seuil": 0, "barcode": "122504 10,3"}, {"name": "GARANT FORET DIN 6535 HA QUEUE CYL Ø 11", "cat": "Forêt TIAN", "qty": 0, "seuil": 0, "barcode": "122504 11"}, {"name": "GARANT FORET DIN 6535 HA QUEUE CYL Ø 12", "cat": "Forêt TIAN", "qty": 0, "seuil": 0, "barcode": "122504 12"}, {"name": "GARANT FORET DIN 6535 HA QUEUE CYL Ø 13", "cat": "Forêt TIAN", "qty": 0, "seuil": 0, "barcode": "122504 13"}, {"name": "GARANT FORET DIN 6535 HA QUEUE CYL Ø 14", "cat": "Forêt TIAN", "qty": 0, "seuil": 0, "barcode": "122504 14"}, {"name": "Taraud machine diam de M1,6", "cat": "Taraud", "qty": 0, "seuil": 0, "barcode": "131150 M1,6"}, {"name": "Taraud machine diam de M2", "cat": "Taraud", "qty": 0, "seuil": 0, "barcode": "132680 M2"}, {"name": "Taraud machine diam de M2,3", "cat": "Taraud", "qty": 0, "seuil": 0, "barcode": "131150 M2,3"}, {"name": "Taraud machine diam de M2,5", "cat": "Taraud", "qty": 0, "seuil": 0, "barcode": "132680 M2,5"}, {"name": "Taraud machine diam de M2,6", "cat": "Taraud", "qty": 0, "seuil": 0, "barcode": "131150 M2,6"}, {"name": "Taraud machine diam de M3", "cat": "Taraud", "qty": 0, "seuil": 0, "barcode": "132680 M3"}, {"name": "Taraud machine diam de M3,5", "cat": "Taraud", "qty": 0, "seuil": 0, "barcode": "131150 M3,5"}, {"name": "Taraud machine diam de M4", "cat": "Taraud", "qty": 0, "seuil": 0, "barcode": "132680 M4"}, {"name": "Taraud machine diam de M5", "cat": "Taraud", "qty": 0, "seuil": 0, "barcode": "132680 M5"}, {"name": "Taraud machine diam de M6", "cat": "Taraud", "qty": 0, "seuil": 0, "barcode": "132680 M6"}, {"name": "Taraud machine diam de M8", "cat": "Taraud", "qty": 0, "seuil": 0, "barcode": "132680 M8"}, {"name": "Taraud machine diam de M10", "cat": "Taraud", "qty": 0, "seuil": 0, "barcode": "132680 M10"}, {"name": "Taraud machine diam de M12", "cat": "Taraud", "qty": 0, "seuil": 0, "barcode": "132680 M12"}, {"name": "Taraud machine diam de M16", "cat": "Taraud", "qty": 0, "seuil": 0, "barcode": "132680 M16"}, {"name": "Taraud machine diam de M20", "cat": "Taraud", "qty": 0, "seuil": 0, "barcode": "132680 M20"}, {"name": "Taraud machine diam de M24", "cat": "Taraud", "qty": 0, "seuil": 0, "barcode": "132680 M24"}, {"name": "BUSE HPR XD NOZZLE 30A (220193)", "cat": "BUSE", "qty": 0, "seuil": 0, "barcode": "002-6755"}, {"name": "BUSE HPR  XD NOZZLE 50A (220554)", "cat": "BUSE", "qty": 0, "seuil": 0, "barcode": "001-2402"}, {"name": "BUSE HPR XD NOZZLE 80A (220188)", "cat": "BUSE", "qty": 0, "seuil": 0, "barcode": "001-0127"}, {"name": "BUSE HPR XD NOZZLE 130A (220182)", "cat": "BUSE", "qty": 0, "seuil": 0, "barcode": "001-0128"}, {"name": "BUSE HPR XD NOZZLE 200A (220354)", "cat": "BUSE", "qty": 0, "seuil": 0, "barcode": "001-1984"}, {"name": "BUSE HPR XD NOZZLE 260A (220439)", "cat": "BUSE", "qty": 0, "seuil": 0, "barcode": "001-0129"}, {"name": "XPR Nozzle 30A MS (420225)", "cat": "BUSE", "qty": 0, "seuil": 0, "barcode": "005-7858"}, {"name": "XPR Nozzle 50A MS (420234)", "cat": "BUSE", "qty": 0, "seuil": 0, "barcode": "006-5955"}, {"name": "XPR Nozzle 80A MS (420243)", "cat": "BUSE", "qty": 0, "seuil": 0, "barcode": "005-7859"}, {"name": "XPR Nozzle 130A MS (420252)", "cat": "BUSE", "qty": 0, "seuil": 0, "barcode": "005-7860"}, {"name": "XPR Nozzle 170A MS (420261)", "cat": "BUSE", "qty": 0, "seuil": 0, "barcode": "005-7861"}, {"name": "XPR Nozzle 300A MS (420279)", "cat": "BUSE", "qty": 0, "seuil": 0, "barcode": "005-7862"}, {"name": "XPR Nozzle 460A MS (520001)", "cat": "BUSE", "qty": 0, "seuil": 0, "barcode": "011-2209"}, {"name": "HPR XD ELECTRODE 30A (220192)", "cat": "ELECTRODES", "qty": 0, "seuil": 0, "barcode": "002-6766"}, {"name": "HRP XD ELECTRODE 50A (220552)", "cat": "ELECTRODES", "qty": 0, "seuil": 0, "barcode": "001-2400"}, {"name": "HPR XD ELECTRODE 80A (220187)", "cat": "ELECTRODES", "qty": 0, "seuil": 0, "barcode": "001-0123"}, {"name": "HPR XD ELECTRODE 130A (220181)", "cat": "ELECTRODES", "qty": 0, "seuil": 0, "barcode": "001-0124"}, {"name": "HPR XD ELECTRODE 200A (220352)", "cat": "ELECTRODES", "qty": 0, "seuil": 0, "barcode": "001-1985"}, {"name": "HPR XD ELECTRODE 260A (220435)", "cat": "ELECTRODES", "qty": 0, "seuil": 0, "barcode": "001-0125"}, {"name": "XPR Electrode 30A MS (420222)", "cat": "ELECTRODES", "qty": 0, "seuil": 0, "barcode": "005-7880"}, {"name": "XPR Electrode 50A MS (420231)", "cat": "ELECTRODES", "qty": 0, "seuil": 0, "barcode": "006-5957"}, {"name": "XPR Electrode 80A MS (420240)", "cat": "ELECTRODES", "qty": 0, "seuil": 0, "barcode": "005-7881"}, {"name": "XPR Electrode 130A MS (420249)", "cat": "ELECTRODES", "qty": 0, "seuil": 0, "barcode": "005-7882"}, {"name": "XPR Electrode 170A MS (420258) AL AIR", "cat": "ELECTRODES", "qty": 0, "seuil": 0, "barcode": "005-7883"}, {"name": "XPR Electrode 220-300A MS (420276)", "cat": "ELECTRODES", "qty": 0, "seuil": 0, "barcode": "005-7884"}, {"name": "XPR Electrode 460A MS (420834)", "cat": "ELECTRODES", "qty": 0, "seuil": 0, "barcode": "011-2207"}, {"name": "DIFFUSEUR HPR XD SWIRL RING 30-45A  (220180)", "cat": "DIFFUSEUR", "qty": 0, "seuil": 0, "barcode": "002-6765"}, {"name": "DIFFUSEUR HPR XD SWIRL RING 50A MS CW (220553)", "cat": "DIFFUSEUR", "qty": 0, "seuil": 0, "barcode": "001-2401"}, {"name": "DIFFUSEUR HPR XD SWIRL RING 80-130A  (220179)", "cat": "DIFFUSEUR", "qty": 0, "seuil": 0, "barcode": "000-5399"}, {"name": "DIFFUSEUR HPR XD SWIRL RING 200A MS CW ( 220353)", "cat": "DIFFUSEUR", "qty": 0, "seuil": 0, "barcode": "001-1978"}, {"name": "DIFFUSEUR HPR XD SWIRL RING 260A (220436)", "cat": "DIFFUSEUR", "qty": 0, "seuil": 0, "barcode": "000-5389"}, {"name": "XPR Swirl Ring 30A MS CW ( 420407)", "cat": "DIFFUSEUR", "qty": 0, "seuil": 0, "barcode": "006-5956"}, {"name": "XPR Swirl Ring 80A-130A MS CW (420242)", "cat": "DIFFUSEUR", "qty": 0, "seuil": 0, "barcode": "005-7873"}, {"name": "XPR Swirl Ring 170A MS (420260) AL AIR", "cat": "DIFFUSEUR", "qty": 0, "seuil": 0, "barcode": "005-7874"}, {"name": "XPR Swirl Ring 220-300A MS (420406)", "cat": "DIFFUSEUR", "qty": 0, "seuil": 0, "barcode": "005-7875"}, {"name": "XPR Swirl Ring 460A MS (420819)", "cat": "DIFFUSEUR", "qty": 0, "seuil": 0, "barcode": "011-2208"}, {"name": "PROTECTEUR HPR XD SHIELD 30A (220194)", "cat": "PROTECTEUR", "qty": 0, "seuil": 0, "barcode": "002-6754"}, {"name": "PROTECTEUR HPR XD SHIELD 50A (220555)", "cat": "PROTECTEUR", "qty": 0, "seuil": 0, "barcode": "001-2404"}, {"name": "PROTECTEUR HPR XD SHIELD 80A MS (220189)", "cat": "PROTECTEUR", "qty": 0, "seuil": 0, "barcode": "001-0132"}, {"name": "PROTECTEUR HPR XD SHIELD 130A (220183)", "cat": "PROTECTEUR", "qty": 0, "seuil": 0, "barcode": "001-0133"}, {"name": "PROTECTEUR HPR XD SHIELD 200A MS (220761)", "cat": "PROTECTEUR", "qty": 0, "seuil": 0, "barcode": "001-1976"}, {"name": "PROTECTEUR HPR XD SHIELD 260A MS 220764 (220764)", "cat": "PROTECTEUR", "qty": 0, "seuil": 0, "barcode": "001-0134"}, {"name": "XPR Shield 30A MS (420228)", "cat": "PROTECTEUR", "qty": 0, "seuil": 0, "barcode": "005-7843"}, {"name": "XPR Shield 50A MS (420237)", "cat": "PROTECTEUR", "qty": 0, "seuil": 0, "barcode": "006-5954"}, {"name": "XPR Shield 80A MS (420246)", "cat": "PROTECTEUR", "qty": 0, "seuil": 0, "barcode": "005-7844"}, {"name": "XPR Shield 130A MS (420255)", "cat": "PROTECTEUR", "qty": 0, "seuil": 0, "barcode": "005-7845"}, {"name": "XPR Shield 170AMS (420513)", "cat": "PROTECTEUR", "qty": 0, "seuil": 0, "barcode": "0005-7846"}, {"name": "XPR Shield 300A MS (420491)", "cat": "PROTECTEUR", "qty": 0, "seuil": 0, "barcode": "005-7847"}, {"name": "XPR Shield 460A MS (520002)", "cat": "PROTECTEUR", "qty": 0, "seuil": 0, "barcode": "011-2210"}, {"name": "CAPE DE MAINTIEN HPR XD NOZZLE RETAINING CAP 50A ( 220754)", "cat": "CAPE DE MAINTIEN", "qty": 0, "seuil": 0, "barcode": "001-2403"}, {"name": "CAPE DE MAINTIENHPR XD RETAINING CAP 80-130A (220756)", "cat": "CAPE DE MAINTIEN", "qty": 0, "seuil": 0, "barcode": "001-0130"}, {"name": "CAPE DE MAINTIEN HPR XD NOZZLE RETAINING CAP 200A ( 220757)", "cat": "CAPE DE MAINTIEN", "qty": 0, "seuil": 0, "barcode": "001-1977"}, {"name": "CAPE DE MAINTIEN HPR XD NOZZLE RETAINING CAP 260A MS CW (220760)", "cat": "CAPE DE MAINTIEN", "qty": 0, "seuil": 0, "barcode": "001-0131"}, {"name": "XPR Nozzle Retaining Cap 30-300A (420365)", "cat": "CAPE DE MAINTIEN", "qty": 0, "seuil": 0, "barcode": "005-7857"}, {"name": "XPR Shield Cap 30-300A (420200)", "cat": "CAPE DE MAINTIEN", "qty": 0, "seuil": 0, "barcode": "005-7842"}, {"name": "CAPE EXTERNE HPR XD SHIELD CAP 30-130A (220747)", "cat": "ARC Writer", "qty": 0, "seuil": 0, "barcode": "001-0135"}, {"name": "CAPE EXTERNE HPR XD SHIELD CAP 200-400A (220637)", "cat": "ARC Writer", "qty": 0, "seuil": 0, "barcode": "000-5393"}, {"name": "BUSE GRAVAGE", "cat": "ARC Writer", "qty": 0, "seuil": 0, "barcode": "120450"}, {"name": "ELECTRODE GRAVAGE", "cat": "ARC Writer", "qty": 0, "seuil": 0, "barcode": "120447"}, {"name": "DIFFUSEUR GRAVAGE", "cat": "ARC Writer", "qty": 0, "seuil": 0, "barcode": "120449"}, {"name": "BUSE DE PROTECTION GRAVAGE", "cat": "ARC Writer", "qty": 0, "seuil": 0, "barcode": "120453"}, {"name": "TUBE A EAU 30-260 A (220340)", "cat": "Divers", "qty": 0, "seuil": 0, "barcode": "001-0126"}, {"name": "LIQUIDE DE REFROIDISSEMENT", "cat": "Divers", "qty": 0, "seuil": 0, "barcode": "001-0122"}, {"name": "O-RING LUBE silicone grease NLGI (027055)", "cat": "Divers", "qty": 0, "seuil": 0, "barcode": "003-0579"}, {"name": "ABIBLUE NF émulsion anti-projections 5l", "cat": "Divers", "qty": 0, "seuil": 0, "barcode": "010-0794"}, {"name": "Dust bag eco 4-6 HCS 63x58h=33", "cat": "Divers", "qty": 0, "seuil": 0, "barcode": "010-3011"}, {"name": "lubrifiant  : VOORTMAN VL-21 can 5 litres", "cat": "Divers", "qty": 0, "seuil": 0, "barcode": "008-5122"}, {"name": "CARBIDE TIP - diam 10 - KenTIP", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-6615"}, {"name": "CARBIDE TIP - diam 11 - KenTIP", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "001-2816"}, {"name": "CARBIDE TIP - diam 12 - KenTIP", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-6616"}, {"name": "DRILL BIT - diam 13", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1310"}, {"name": "DRILL BIT - diam 14", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1318"}, {"name": "DRILL BIT - diam 15", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1327"}, {"name": "DRILL BIT - diam 16", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1336"}, {"name": "DRILL BIT - diam 17", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1342"}, {"name": "DRILL BIT - diam 17,5", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1345"}, {"name": "DRILL BIT - diam 18", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1347"}, {"name": "DRILL BIT - diam 19", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1351"}, {"name": "DRILL BIT - diam 20", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1357"}, {"name": "DRILL BIT - diam 21", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1361"}, {"name": "DRILL BIT - diam 22", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1365"}, {"name": "DRILL BIT - diam 23", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1369"}, {"name": "DRILL BIT - diam 24", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1373"}, {"name": "DRILL BIT - diam 25", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1376"}, {"name": "DRILL BIT - diam 26", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1380"}, {"name": "DRILL BIT - diam 27", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1384"}, {"name": "DRILL BIT - diam 28", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1387"}, {"name": "DRILL BIT - diam 29", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1391"}, {"name": "DRILL BIT - diam 30", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1395"}, {"name": "DRILL BIT - diam 31", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1400"}, {"name": "DRILL BIT - diam 32", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1403"}, {"name": "DRILL BIT - diam 33", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "001-2289"}, {"name": "Carbide tip ø34mm KSEM HPGM KCPM45", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "004-4033"}, {"name": "Carbide tip ø35mm KSEM HPGM KCPM45", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1415"}, {"name": "Carbide tip ø36mm KSEM HPGM KCPM45", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1418"}, {"name": "Carbide tip ø37mm KSEM HPGM KCPM45", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "005-1871"}, {"name": "Carbide tip ø38mm KSEM HPGM KCPM45", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "004-7609"}, {"name": "Carbide tip ø39mm KSEM HPGM KCPM45", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "005-1872"}, {"name": "Carbide tip ø40mm KSEM HPGM KCPM45", "cat": "Plaquettes", "qty": 0, "seuil": 0, "barcode": "000-1431"}, {"name": "GARANT FR.EB.CARB.HB TIALN ARR.INT.VERTE", "cat": "Fraises Carbure", "qty": 0, "seuil": 0, "barcode": "205716 6"}, {"name": "GARANT FR.EB.CARB.HB TIALN ARR.INT.VERTE", "cat": "Fraises Carbure", "qty": 0, "seuil": 0, "barcode": "205716 10"}, {"name": "GARANT FR.EB.CARB.HB TIALN ARR.INT.VERTE", "cat": "Fraises Carbure", "qty": 0, "seuil": 0, "barcode": "205716 12"}, {"name": "GARANT FR.EB.CARB.HB TIALN ARR.INT.VERTE", "cat": "Fraises Carbure", "qty": 0, "seuil": 0, "barcode": "205716 16"}, {"name": "GARANT FR.EB.CARB.HB TIALN ARR.INT.VERTE", "cat": "Fraises Carbure", "qty": 0, "seuil": 0, "barcode": "205716 20"}, {"name": "Harvi Carbide Mill ø8mm WD8 necked", "cat": "Fraises Carbure", "qty": 0, "seuil": 0, "barcode": "006-9591"}, {"name": "Harvi Carbide Mill ø12mm WD12 necked", "cat": "Fraises Carbure", "qty": 0, "seuil": 0, "barcode": "006-9592"}, {"name": "Harvi Carbide Mill ø20mm WD20 necked", "cat": "Fraises Carbure", "qty": 0, "seuil": 0, "barcode": "006-9594"}, {"name": "Fraise HSS 20 mm de long (Fraise 75mm)", "cat": "Fraises Carbure", "qty": 0, "seuil": 0, "barcode": "007-5041"}, {"name": "Harvi carbide mill Ø16 WD16 necked", "cat": "Fraises Carbure", "qty": 0, "seuil": 0, "barcode": "006-9593"}, {"name": "Band saw brush", "cat": "Lames", "qty": 0, "seuil": 0, "barcode": "000-1438"}, {"name": "BANDSAWBLADE  9800 x 67 x 1,6 (2/3) WS - VB1250 (lot 2)", "cat": "Lames", "qty": 0, "seuil": 0, "barcode": "008-3862"}, {"name": "FNR. LAME RUBAN BI-METAL PROTEC M42 41 mm x 1.30 x Z 4/6 de 7.35 m (petite VOORTMAN 750)", "cat": "Lames", "qty": 0, "seuil": 0, "barcode": "64GOI4113347350"}, {"name": "HOLEX FRAISE A CHANFREINER 90", "cat": "Lamage", "qty": 0, "seuil": 0, "barcode": "150395 40"}, {"name": "HOLEX FRAISE A CHANFREINER 90", "cat": "Lamage", "qty": 0, "seuil": 0, "barcode": "150182 20,5"}, {"name": "HOLEX FRAISE A CHANFREINER 90", "cat": "Lamage", "qty": 0, "seuil": 0, "barcode": "150150 40"}, {"name": "Drillholder 2 xD FDS - Diam 34-35 - Adapter size 32", "cat": "KSEM+", "qty": 0, "seuil": 0, "barcode": "004-5062"}, {"name": "Drillholder 2 xD FDS - Diam 36-39 - Adapter size 32", "cat": "KSEM+", "qty": 0, "seuil": 0, "barcode": "003-3944"}, {"name": "Drillholder 2 xD FDS - Diam 40-42 - Adapter size 32", "cat": "KSEM+", "qty": 0, "seuil": 0, "barcode": "003-3945"}, {"name": "DRILL HEAD - diam 34", "cat": "KSEM+", "qty": 0, "seuil": 0, "barcode": "003-5626"}, {"name": "DRILL HEAD - diam 35", "cat": "KSEM+", "qty": 0, "seuil": 0, "barcode": "004-5063"}, {"name": "DRILL HEAD - diam 36", "cat": "KSEM+", "qty": 0, "seuil": 0, "barcode": "003-3938"}, {"name": "DRILL HEAD - diam 37", "cat": "KSEM+", "qty": 0, "seuil": 0, "barcode": "004-5064"}, {"name": "DRILL HEAD - diam 38", "cat": "KSEM+", "qty": 0, "seuil": 0, "barcode": "003-3941"}, {"name": "DRILL HEAD - diam 39", "cat": "KSEM+", "qty": 0, "seuil": 0, "barcode": "004-5065"}, {"name": "DRILL HEAD - diam 40", "cat": "KSEM+", "qty": 0, "seuil": 0, "barcode": "003-3942"}, {"name": "DRILL HEAD - diam 42", "cat": "KSEM+", "qty": 0, "seuil": 0, "barcode": "003-3943"}, {"name": "CARBIDE DRILLING INSERT - diam 34-35", "cat": "KSEM+", "qty": 0, "seuil": 0, "barcode": "003-5627"}, {"name": "CARBIDE DRILLING INSERT - diam 36-42", "cat": "KSEM+", "qty": 0, "seuil": 0, "barcode": "003-3946"}, {"name": "CARBIDE GUIDING PAD - diam 34-42", "cat": "KSEM+", "qty": 0, "seuil": 0, "barcode": "003-3947"}, {"name": "GARANT PLAQ. REV. PR. FORET A CENTRER NC", "cat": "Marquage", "qty": 0, "seuil": 0, "barcode": "231521 10G"}, {"name": "MARKING TOOL SK40", "cat": "Marquage", "qty": 0, "seuil": 0, "barcode": "000-1491"}, {"name": "ADAPTER (excl. Pulling bolt) size 16, L =130mm, D = 36mm", "cat": "Adaptateurs", "qty": 0, "seuil": 0, "barcode": "002-5337"}, {"name": "ADAPTER (excl. Pulling bolt) size 20, L =130mm, D = 40mm", "cat": "Adaptateurs", "qty": 0, "seuil": 0, "barcode": "002-5338"}, {"name": "ADAPTER (excl. Pulling bolt) size 25, L =130mm, D = 46mm", "cat": "Adaptateurs", "qty": 0, "seuil": 0, "barcode": "002-5339"}, {"name": "ADAPTER (excl. Pulling bolt) size 32, L =120mm, D = 52mm", "cat": "Adaptateurs", "qty": 0, "seuil": 0, "barcode": "002-5340"}, {"name": "SK40 WD8 Cool Bores L=100", "cat": "Adaptateurs", "qty": 0, "seuil": 0, "barcode": "008-4558"}, {"name": "SK40 WD12 Cool Bores L=100", "cat": "Adaptateurs", "qty": 0, "seuil": 0, "barcode": "008-4560"}, {"name": "Adapter SK40 WD20 A=63 D=52 Cool Bores (Fraise HSS 75)", "cat": "Adaptateurs", "qty": 0, "seuil": 0, "barcode": "006-9588"}, {"name": "adapter SK40 WD16 A=130 D48 cool bores", "cat": "Adaptateurs", "qty": 0, "seuil": 0, "barcode": "010-0916"}, {"name": "Pulling bolt - M16", "cat": "Adaptateurs", "qty": 0, "seuil": 0, "barcode": "000-1216"}];
+
+async function importVoortmanCatalog(){
+  const byBarcode = {};
+  items.forEach(it => { byBarcode[(it.barcode||'').trim()] = it; });
+  let added = 0, updated = 0;
+  VOORTMAN_CATALOG.forEach(entry => {
+    const existing = byBarcode[entry.barcode];
+    if(existing){
+      existing.name = entry.name;
+      existing.cat = entry.cat;
+      // quantité et seuil déjà saisis conservés tels quels
+      updated += 1;
+    }else{
+      items.push({
+        id: uid(),
+        name: entry.name,
+        cat: entry.cat,
+        qty: entry.qty,
+        seuil: entry.seuil,
+        barcode: entry.barcode
+      });
+      added += 1;
+    }
+  });
+  await saveItems();
+  render();
+  showToast(`Catalogue mis à jour : ${added} ajouté(s), ${updated} actualisé(s) (stock conservé)`, 'ok');
+}
+
+$('importBtn').addEventListener('click', () => {
+  if(role !== 'admin') return;
+  const ok = confirm(`Mettre à jour le catalogue Voortman (${VOORTMAN_CATALOG.length} références) ? Les noms/catégories seront actualisés, les quantités déjà saisies seront conservées, les nouveaux articles seront ajoutés à 0.`);
+  if(ok) importVoortmanCatalog();
+});
+
+
+
+
+function renderChips(){
+  const used = new Set(items.map(i => i.cat || 'Autre'));
+  const cats = ['Toutes', ...new Set([...DEFAULT_CATS.filter(c=>used.has(c)), ...used])];
+  $('chips').innerHTML = cats.map(c =>
+    `<button class="chip ${c===activeCategory?'active':''}" data-cat="${c}">${c}</button>`
+  ).join('');
+  $('chips').querySelectorAll('.chip').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ activeCategory = btn.dataset.cat; render(); });
+  });
+}
+
+function renderStats(){
+  $('statTotal').textContent = items.length;
+  $('statLow').textContent = items.filter(i=>statusOf(i)==='low').length;
+  $('statCrit').textContent = items.filter(i=>statusOf(i)==='crit').length;
+}
+
+function renderList(){
+  let visible = items.filter(i=>{
+    const matchCat = activeCategory==='Toutes' || (i.cat||'Autre')===activeCategory;
+    const matchSearch = i.name.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchCat && matchSearch;
+  });
+  visible = visible.slice().sort((a,b)=>{
+    const order = {crit:0, low:1, ok:2};
+    return order[statusOf(a)] - order[statusOf(b)] || a.name.localeCompare(b.name);
+  });
+
+  const list = $('list');
+  if(items.length===0){
+    list.innerHTML = `<div class="empty"><p class="big">Réserve vide</p><p>Ajoute ton premier consommable avec le bouton + ou scanne un QR code.</p></div>`;
+    return;
+  }
+  if(visible.length===0){
+    list.innerHTML = `<div class="empty"><p class="big">Rien trouvé</p><p>Essaie une autre recherche ou catégorie.</p></div>`;
+    return;
+  }
+
+  list.innerHTML = visible.map(item=>{
+    const st = statusOf(item);
+    const meta = statusMeta[st];
+    const seuil = Number(item.seuil)||0;
+    const qty = Number(item.qty)||0;
+    const ref = Math.max(seuil*3, qty, 1);
+    const fillPct = Math.min(100, Math.round((qty/ref)*100));
+    const tickPct = Math.min(100, Math.round((seuil/ref)*100));
+    return `
+    <div class="card" style="--tag:${meta.color}" data-id="${item.id}">
+      <div class="card-top">
+        <div class="thumb"><span>${initials(item.name)}</span></div>
+        <div class="info-block">
+          <div class="name">${escapeHtml(item.name)}</div>
+          <div class="cat">${escapeHtml(item.cat || 'Autre')}</div>
+          ${item.barcode ? `<div class="barcode-tag">▤ ${escapeHtml(item.barcode)}</div>` : ''}
+        </div>
+        <div class="qty-wrap">
+          <div class="stepper">
+            <button data-act="dec" aria-label="Retirer une unité">–</button>
+            <span class="n">${qty}</span>
+            <button data-act="inc" aria-label="Ajouter une unité">+</button>
+          </div>
+        </div>
+      </div>
+      <div class="gauge-row">
+        <div class="gauge">
+          <div class="fill" style="width:${fillPct}%"></div>
+          <div class="tick" style="left:${tickPct}%"></div>
+        </div>
+        <div class="gauge-meta">
+          <span>${qty} · seuil ${seuil}</span>
+          <span class="status-label">${meta.label}</span>
+        </div>
+      </div>
+      <div class="card-actions">
+        <button class="del" data-act="qr">Voir le QR</button>
+        <button class="del" data-act="del">Supprimer</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('.card').forEach(card=>{
+    const id = card.dataset.id;
+    card.querySelector('[data-act="inc"]').addEventListener('click', (e)=>{ e.stopPropagation(); changeQty(id, 1); });
+    card.querySelector('[data-act="dec"]').addEventListener('click', (e)=>{ e.stopPropagation(); changeQty(id, -1); });
+    card.querySelector('[data-act="del"]').addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if(role !== 'admin'){ showToast('Réservé à l\'administrateur', 'crit'); return; }
+      deleteItem(id);
+    });
+    card.querySelector('[data-act="qr"]').addEventListener('click', (e)=>{ e.stopPropagation(); openQrLabel(id); });
+    card.addEventListener('click', ()=>{
+      if(role !== 'admin'){ showToast('Modification du stock réservée à l\'administrateur', 'crit'); return; }
+      openEditSheet(id);
+    });
+  });
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function initials(name){
+  return (name||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase() || '?';
+}
+
+function render(){
+  renderChips();
+  renderStats();
+  renderList();
+  applyRoleUI();
+}
+
+function applyRoleUI(){
+  const isAdmin = role === 'admin';
+  const badge = $('roleBadge');
+  badge.textContent = isAdmin ? 'Administrateur' : 'Opérateur';
+  badge.classList.toggle('admin', isAdmin);
+  $('roleSwitchBtn').textContent = isAdmin ? 'Repasser opérateur' : 'Mode administrateur';
+  $('modeIn').disabled = !isAdmin;
+  if(!isAdmin && scanMode === 'in'){
+    scanMode = 'out';
+    $('modeIn').classList.remove('active');
+    $('modeOut').classList.add('active');
+  }
+  document.querySelectorAll('.stepper [data-act="inc"]').forEach(b => { b.disabled = !isAdmin; });
+  document.querySelectorAll('.stepper [data-act="dec"]').forEach(b => { b.disabled = !isAdmin; });
+  document.querySelectorAll('[data-act="del"]').forEach(b => { b.disabled = !isAdmin; });
+  $('fabAdd').disabled = !isAdmin;
+  $('refreshBtn').style.display = isAdmin ? 'flex' : 'none';
+  $('removeObsoleteBtn').style.display = isAdmin ? 'flex' : 'none';
+  $('importBtn').style.display = isAdmin ? 'flex' : 'none';
+}
+
+$('refreshBtn').addEventListener('click', async ()=>{
+  $('refreshBtn').textContent = '…';
+  await loadItems();
+  $('refreshBtn').textContent = '⟳';
+  showToast('Stock actualisé', 'ok');
+});
+
+$('roleSwitchBtn').addEventListener('click', ()=>{
+  if(role === 'admin'){
+    role = 'operator';
+    applyRoleUI();
+  }else{
+    $('pinInput').value = '';
+    $('pinErr').style.display = 'none';
+    $('pinOverlay').classList.add('open');
+    setTimeout(()=> $('pinInput').focus(), 50);
+  }
+});
+$('pinCancel').addEventListener('click', ()=> $('pinOverlay').classList.remove('open'));
+$('pinConfirm').addEventListener('click', ()=>{
+  if($('pinInput').value === ADMIN_PIN){
+    role = 'admin';
+    $('pinOverlay').classList.remove('open');
+    applyRoleUI();
+    showToast('Mode administrateur activé', 'ok');
+  }else{
+    $('pinErr').style.display = 'block';
+  }
+});
+$('pinInput').addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter'){ e.preventDefault(); $('pinConfirm').click(); }
+});
+
+function changeQty(id, delta){
+  if(role !== 'admin'){
+    showToast('Modification du stock réservée à l\'administrateur — utilise le scan pour une sortie', 'crit');
+    return;
+  }
+  const item = items.find(i=>i.id===id);
+  if(!item) return;
+  item.qty = Math.max(0, (Number(item.qty)||0) + delta);
+  saveItems();
+  logMovement(item, delta > 0 ? 'in' : 'out', Math.abs(delta));
+  render();
+}
+
+function deleteItem(id){
+  items = items.filter(i=>i.id!==id);
+  saveItems();
+  render();
+}
+
+function generateQrSvg(text){
+  for(var type=1; type<=20; type++){
+    try{
+      var qr = qrcode(type, 'M');
+      qr.addData(String(text));
+      qr.make();
+      return qr.createSvgTag(6, 8);
+    }catch(e){
+      // ce type ne suffit pas, on essaie le suivant
+    }
+  }
+  return '';
+}
+
+function svgToPngDataUrl(svgString, sizePx){
+  return new Promise((resolve, reject)=>{
+    try{
+      const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = sizePx; canvas.height = sizePx;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, sizePx, sizePx);
+        ctx.drawImage(img, 0, 0, sizePx, sizePx);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+      img.src = url;
+    }catch(e){
+      reject(e);
+    }
+  });
+}
+
+async function openQrLabel(id){
+  const item = items.find(i=>i.id===id);
+  if(!item) return;
+  const value = item.barcode || item.id;
+  $('qrLabelTitle').textContent = item.name;
+  $('qrLabelValue').textContent = value;
+
+  const svg = generateQrSvg(value);
+  const holder = $('qrLabelCode');
+  holder.innerHTML = svg || '<span style="font-size:12px;color:var(--crit);padding:10px;">QR indisponible</span>';
+  const svgEl = holder.querySelector('svg');
+  if(svgEl){ svgEl.style.width = '180px'; svgEl.style.height = '180px'; }
+
+  const fname = 'qr-' + item.name.toLowerCase().replace(/[^a-z0-9]+/g,'-') + '.png';
+  const dlBtn = $('qrLabelDownload');
+  dlBtn.removeAttribute('href');
+  dlBtn.textContent = 'Préparation…';
+  $('qrLabelOverlay').classList.add('open');
+
+  if(svg){
+    try{
+      const dataUrl = await svgToPngDataUrl(svg, 900);
+      dlBtn.href = dataUrl;
+      dlBtn.setAttribute('download', fname);
+      dlBtn.textContent = 'Télécharger (PNG)';
+    }catch(e){
+      dlBtn.textContent = 'Téléchargement indisponible';
+    }
+  }else{
+    dlBtn.textContent = 'Téléchargement indisponible';
+  }
+}
+
+$('qrLabelClose').addEventListener('click', ()=> $('qrLabelOverlay').classList.remove('open'));
+$('qrLabelOverlay').addEventListener('click', (e)=>{ if(e.target.id==='qrLabelOverlay') $('qrLabelOverlay').classList.remove('open'); });
+
+function showToast(msg, kind){
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (kind ? ' '+kind : '');
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(()=>{ t.classList.remove('show'); }, 2200);
+}
+
+function openAddSheet(prefillBarcode){
+  editingId = null;
+  $('sheetTitle').textContent = 'Nouveau consommable';
+  $('fName').value=''; $('fCat').value=''; $('fQty').value=''; $('fSeuil').value='';
+  $('fBarcode').value = prefillBarcode || '';
+  $('formErr').style.display='none';
+  $('editOnlyActions').style.display='none';
+  $('overlay').classList.add('open');
+  setTimeout(()=> $('fName').focus(), 50);
+}
+
+function openEditSheet(id){
+  const item = items.find(i=>i.id===id);
+  if(!item) return;
+  editingId = id;
+  $('sheetTitle').textContent = 'Modifier le consommable';
+  $('fName').value = item.name;
+  $('fCat').value = item.cat || '';
+  $('fQty').value = item.qty;
+  $('fSeuil').value = item.seuil || '';
+  $('fBarcode').value = item.barcode || '';
+  $('formErr').style.display='none';
+  $('editOnlyActions').style.display='flex';
+  $('overlay').classList.add('open');
+}
+
+function closeSheet(){
+  $('overlay').classList.remove('open');
+  editingId = null;
+}
+
+async function saveSheet(){
+  const name = $('fName').value.trim();
+  const qty = $('fQty').value;
+  if(!name || qty===''){
+    $('formErr').style.display='block';
+    return;
+  }
+  const data = {
+    name,
+    cat: $('fCat').value.trim() || 'Autre',
+    qty: Number(qty),
+    seuil: Number($('fSeuil').value) || 0,
+    barcode: $('fBarcode').value.trim() || ('QR-' + uid().toUpperCase())
+  };
+  let newId = null;
+  if(editingId){
+    const item = items.find(i=>i.id===editingId);
+    if(item) Object.assign(item, data);
+  }else{
+    newId = uid();
+    items.push({ id: newId, ...data });
+  }
+  await saveItems();
+  closeSheet();
+  render();
+  if(newId){
+    openQrLabel(newId);
+  }
+}
+
+function deleteFromSheet(){
+  if(editingId){
+    deleteItem(editingId);
+  }
+  closeSheet();
+}
+
+function findByBarcode(code){
+  return items.find(i => (i.barcode||'').trim() === code.trim());
+}
+
+let pendingScan = null;
+
+function processScan(rawCode){
+  const code = (rawCode||'').trim();
+  if(!code) return;
+  if(scanMode === 'in' && role !== 'admin'){
+    showToast('Entrée réservée à l\'administrateur', 'crit');
+    $('barcodeInput').value = '';
+    return;
+  }
+  const item = findByBarcode(code);
+  if(item){
+    pendingScan = { item, mode: scanMode, qty: scanQty };
+    openConfirmSheet();
+  }else{
+    showToast('QR code inconnu — création du consommable', 'crit');
+    openAddSheet(code);
+  }
+  $('barcodeInput').value = '';
+}
+
+function openConfirmSheet(){
+  if(!pendingScan) return;
+  const { item, mode, qty } = pendingScan;
+  const isIn = mode === 'in';
+  $('confirmTitle').textContent = isIn ? 'Confirmer l\'entrée' : 'Confirmer la sortie';
+  $('confirmPhoto').innerHTML = `<span>${initials(item.name)}</span>`;
+  $('confirmName').textContent = item.name;
+  $('confirmSub').textContent = `${item.cat || 'Autre'} · stock actuel ${item.qty}`;
+  const after = isIn ? (Number(item.qty)||0) + qty : Math.max(0, (Number(item.qty)||0) - qty);
+  $('confirmDelta').innerHTML = `<span class="${isIn?'in':'out'}">${isIn?'+':'-'}${qty}</span> → ${after}`;
+  const validateBtn = $('confirmValidate');
+  validateBtn.textContent = isIn ? 'Valider l\'entrée' : 'Valider la sortie';
+  validateBtn.className = 'btn primary ' + (isIn ? 'in' : 'out');
+  $('confirmOverlay').classList.add('open');
+}
+
+async function validatePendingScan(){
+  if(!pendingScan) return;
+  const { item, mode, qty } = pendingScan;
+  const delta = mode === 'in' ? qty : -qty;
+  item.qty = Math.max(0, (Number(item.qty)||0) + delta);
+  await saveItems();
+  await logMovement(item, mode, qty);
+  render();
+  showToast(`${mode==='in' ? '+':'-'}${qty} · ${item.name} → ${item.qty}`, mode==='in' ? 'ok' : 'crit');
+  pendingScan = null;
+  $('confirmOverlay').classList.remove('open');
+}
+
+function cancelPendingScan(){
+  pendingScan = null;
+  $('confirmOverlay').classList.remove('open');
+}
+
+$('confirmValidate').addEventListener('click', validatePendingScan);
+$('confirmCancel').addEventListener('click', cancelPendingScan);
+$('confirmOverlay').addEventListener('click', (e)=>{ if(e.target.id==='confirmOverlay') cancelPendingScan(); });
+
+$('barcodeInput').addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter'){
+    e.preventDefault();
+    processScan(e.target.value);
+  }
+});
+
+$('modeIn').addEventListener('click', ()=>{
+  if(role !== 'admin') return;
+  scanMode='in'; $('modeIn').classList.add('active'); $('modeOut').classList.remove('active');
+});
+$('modeOut').addEventListener('click', ()=>{
+  scanMode='out'; $('modeOut').classList.add('active'); $('modeIn').classList.remove('active');
+});
+let keypadValue = '1';
+
+function openKeypad(){
+  keypadValue = String(scanQty || 1);
+  $('keypadDisplay').textContent = keypadValue;
+  $('keypadOverlay').classList.add('open');
+}
+
+function updateKeypadDisplay(){
+  $('keypadDisplay').textContent = keypadValue || '0';
+}
+
+$('qtyOpenBtn').addEventListener('click', openKeypad);
+
+document.querySelectorAll('.keypad-grid .key').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const k = btn.dataset.key;
+    if(k === 'clear'){
+      keypadValue = '';
+    }else if(k === 'back'){
+      keypadValue = keypadValue.slice(0, -1);
+    }else{
+      if(keypadValue.length >= 4) return; // limite raisonnable (max 9999)
+      keypadValue = (keypadValue === '0' ? '' : keypadValue) + k;
+    }
+    updateKeypadDisplay();
+  });
+});
+
+$('keypadCancel').addEventListener('click', () => {
+  $('keypadOverlay').classList.remove('open');
+});
+
+$('keypadValidate').addEventListener('click', () => {
+  const n = Math.max(1, parseInt(keypadValue, 10) || 1);
+  scanQty = n;
+  $('scanQtyN').textContent = scanQty;
+  $('keypadOverlay').classList.remove('open');
+});
+
+$('keypadOverlay').addEventListener('click', (e) => {
+  if(e.target.id === 'keypadOverlay') $('keypadOverlay').classList.remove('open');
+});
+
+$('fabAdd').addEventListener('click', ()=> openAddSheet());
+$('cancelBtn').addEventListener('click', closeSheet);
+$('overlay').addEventListener('click', (e)=>{ if(e.target.id==='overlay') closeSheet(); });
+$('saveBtn').addEventListener('click', saveSheet);
+$('deleteFromSheetBtn').addEventListener('click', deleteFromSheet);
+$('search').addEventListener('input', (e)=>{ searchTerm = e.target.value; render(); });
+
+let zxingReader = null;
+
+async function startCamera(){
+  $('camOverlay').classList.add('open');
+  $('camMsg').textContent = 'Cadre le QR code dans le rectangle.';
+
+  if(typeof ZXing === 'undefined'){
+    $('camMsg').textContent = "Le lecteur ne s'est pas chargé (vérifie ta connexion) — utilise la saisie manuelle ou une douchette.";
+    return;
+  }
+
+  try{
+    const video = $('camVideo');
+    const hints = new Map();
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+      ZXing.BarcodeFormat.QR_CODE
+    ]);
+    zxingReader = new ZXing.BrowserMultiFormatReader(hints);
+
+    await zxingReader.decodeFromConstraints(
+      { video: { facingMode: { ideal: 'environment' } } },
+      video,
+      (result, err) => {
+        if(result){
+          const value = result.getText();
+          stopCamera();
+          processScan(value);
+        }
+        // err fires continuously when no code is found in a frame — expected, ignore it.
+      }
+    );
+    camStream = video.srcObject;
+  }catch(err){
+    $('camMsg').textContent = "Caméra inaccessible (permission refusée, ou aucune caméra détectée). Utilise la saisie manuelle.";
+  }
+}
+
+function stopCamera(){
+  if(zxingReader){
+    try{ zxingReader.reset(); }catch(e){}
+    zxingReader = null;
+  }
+  if(camStream){
+    camStream.getTracks().forEach(t=>t.stop());
+    camStream = null;
+  }
+  $('camOverlay').classList.remove('open');
+}
+
+$('camBtn').addEventListener('click', startCamera);
+$('camClose').addEventListener('click', stopCamera);
+
+async function exportXLSX(){
+  if(items.length===0){
+    showToast('Rien à exporter pour le moment', 'crit');
+    return;
+  }
+  if(typeof ExcelJS === 'undefined'){
+    showToast("Le générateur Excel ne s'est pas chargé (vérifie ta connexion)", 'crit');
+    return;
+  }
+
+  const statusLabel = { ok:'OK', low:'Bas', crit:'Épuisé' };
+  const INK = 'FF21262B', WHITE = 'FFFFFFFF';
+  const fillOk   = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFDFF0E1' } };
+  const fillLow  = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFFCE8CC' } };
+  const fillCrit = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFF6D2CD' } };
+  const fontOk   = { color:{ argb:'FF2F6B45' }, bold:true };
+  const fontLow  = { color:{ argb:'FF8A4B0F' }, bold:true };
+  const fontCrit = { color:{ argb:'FF8A241A' }, bold:true };
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Stock atelier';
+  wb.created = new Date();
+
+  // ===== Feuille Résumé (KPI) =====
+  const wsK = wb.addWorksheet('Résumé');
+  const total = items.length;
+  const counts = { ok:0, low:0, crit:0 };
+  items.forEach(it => { counts[statusOf(it)] += 1; });
+  const nAlert = counts.low + counts.crit;
+  const totalQty = items.reduce((s,it)=> s + (Number(it.qty)||0), 0);
+  const tauxRupture = total ? Math.round(1000*counts.crit/total)/10 : 0;
+  const sortiesMois = monthlyOutTotal();
+
+  wsK.mergeCells('A1:G1');
+  wsK.getCell('A1').value = 'Résumé du stock — atelier';
+  wsK.getCell('A1').font = { bold:true, size:18, color:{argb:INK} };
+  wsK.mergeCells('A2:G2');
+  wsK.getCell('A2').value = 'Généré le ' + new Date().toLocaleDateString('fr-FR');
+  wsK.getCell('A2').font = { size:10, color:{argb:'FF6B7480'} };
+
+  const kpis = [
+    ['Références totales', total, WHITE, INK],
+    ['En stock (OK)', counts.ok, 'FFDFF0E1', 'FF2F6B45'],
+    ['Stock bas', counts.low, 'FFFCE8CC', 'FF8A4B0F'],
+    ['Épuisées', counts.crit, 'FFF6D2CD', 'FF8A241A'],
+    ['Total en alerte', nAlert, 'FFFCE8CC', 'FF8A4B0F'],
+    ['Taux de rupture', tauxRupture + '%', 'FFF6D2CD', 'FF8A241A'],
+    ['Sorties (ce mois)', sortiesMois, 'FFDCE7E9', 'FF2B4C59']
+  ];
+  kpis.forEach((k, i) => {
+    const col = i + 1;
+    const cLabel = wsK.getCell(4, col);
+    const cVal = wsK.getCell(5, col);
+    cLabel.value = k[0];
+    cVal.value = k[1];
+    cLabel.font = { size:10, bold:true, color:{argb:'FF6B7480'} };
+    cVal.font = { size:18, bold:true, color:{argb:k[3]} };
+    cLabel.fill = { type:'pattern', pattern:'solid', fgColor:{argb:k[2]} };
+    cVal.fill = { type:'pattern', pattern:'solid', fgColor:{argb:k[2]} };
+    cLabel.alignment = { wrapText:true, vertical:'middle' };
+    cVal.alignment = { vertical:'middle' };
+    wsK.getColumn(col).width = 17;
+  });
+  wsK.getRow(4).height = 30;
+  wsK.getRow(5).height = 32;
+
+  wsK.getCell(7,1).value = 'Quantité totale en stock';
+  wsK.getCell(7,1).font = { size:10, bold:true, color:{argb:'FF6B7480'} };
+  wsK.getCell(8,1).value = totalQty;
+  wsK.getCell(8,1).font = { size:15, bold:true, color:{argb:INK} };
+
+  const catHeaderRow = 11;
+  wsK.getCell(catHeaderRow - 1, 1).value = 'Répartition par catégorie';
+  wsK.getCell(catHeaderRow - 1, 1).font = { bold:true, size:13, color:{argb:INK} };
+  const catHeaders = ['Catégorie','Total','OK','Bas','Épuisé','% en alerte'];
+  catHeaders.forEach((h, i) => {
+    const c = wsK.getCell(catHeaderRow, i+1);
+    c.value = h;
+    c.font = { bold:true, color:{argb:WHITE} };
+    c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:INK} };
+  });
+  const byCat = {};
+  items.forEach(it => {
+    const cat = it.cat || 'Autre';
+    if(!byCat[cat]) byCat[cat] = { ok:0, low:0, crit:0 };
+    byCat[cat][statusOf(it)] += 1;
+  });
+  const catRows = Object.keys(byCat).map(cat => {
+    const c = byCat[cat];
+    const tot = c.ok + c.low + c.crit;
+    const pct = tot ? Math.round(1000*(c.low+c.crit)/tot)/10 : 0;
+    return [cat, tot, c.ok, c.low, c.crit, pct];
+  }).sort((a,b)=> b[5]-a[5]);
+  catRows.forEach((r, i) => {
+    const rowIdx = catHeaderRow + 1 + i;
+    const fillColor = r[5] === 0 ? 'FFDFF0E1' : (r[5] >= 50 ? 'FFF6D2CD' : 'FFFCE8CC');
+    r.forEach((val, ci) => {
+      const c = wsK.getCell(rowIdx, ci+1);
+      c.value = ci === 5 ? val + '%' : val;
+      c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:fillColor} };
+    });
+  });
+  wsK.columns.forEach((c,i)=>{ if(i<6) wsK.getColumn(i+1).width = [26,10,8,8,10,12][i]; });
+
+  // ===== Feuille Stock (détail) =====
+  const ws = wb.addWorksheet('Stock');
+
+  ws.columns = [
+    { header:'Nom',            key:'name',   width:38 },
+    { header:'Catégorie',      key:'cat',    width:18 },
+    { header:'Quantité',       key:'qty',    width:12 },
+    { header:'Seuil d\'alerte', key:'seuil', width:14 },
+    { header:'Statut',         key:'statut', width:12 },
+    { header:'Code QR',        key:'barcode',width:22 }
+  ];
+
+  const headerRow = ws.getRow(1);
+  headerRow.font = { bold:true, color:{ argb:'FFFFFFFF' } };
+  headerRow.eachCell(cell => {
+    cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF21262B' } };
+    cell.alignment = { vertical:'middle' };
+  });
+
+  const sorted = items.slice().sort((a,b)=>{
+    const order = { crit:0, low:1, ok:2 };
+    return order[statusOf(a)] - order[statusOf(b)] || a.name.localeCompare(b.name);
+  });
+
+  sorted.forEach(it => {
+    const st = statusOf(it);
+    const row = ws.addRow({
+      name: it.name,
+      cat: it.cat || 'Autre',
+      qty: Number(it.qty) || 0,
+      seuil: Number(it.seuil) || 0,
+      statut: statusLabel[st],
+      barcode: it.barcode || ''
+    });
+    let fill = fillOk, font = null;
+    if(st === 'low'){ fill = fillLow; font = fontLow; }
+    if(st === 'crit'){ fill = fillCrit; font = fontCrit; }
+    row.eachCell(cell => {
+      cell.fill = fill;
+      if(font) cell.font = font;
+    });
+  });
+
+  ws.autoFilter = { from:'A1', to:'F1' };
+  ws.views = [{ state:'frozen', ySplit:1 }];
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `stock-atelier-${stamp}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Export Excel généré', 'ok');
+}
+
+$('exportBtn').addEventListener('click', exportXLSX);
+
+const now = new Date();
+$('dateLabelText').textContent = 'réserve · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
+
+initFirebase();
+updateSyncBadge();
+loadItems();
+startRealtimeSync();
+loadMovements();
+startMovementsRealtimeSync();
+</script>
+</body>
+</html>
