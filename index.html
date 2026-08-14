@@ -2426,20 +2426,30 @@ async function exportXLSX(){
   }
 
   const statusLabel = { ok:'OK', low:'Bas', crit:'Épuisé' };
-  const INK = 'FF21262B', WHITE = 'FFFFFFFF';
-  const fillOk   = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFDFF0E1' } };
-  const fillLow  = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFFCE8CC' } };
-  const fillCrit = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFF6D2CD' } };
-  const fontOk   = { color:{ argb:'FF2F6B45' }, bold:true };
-  const fontLow  = { color:{ argb:'FF8A4B0F' }, bold:true };
-  const fontCrit = { color:{ argb:'FF8A241A' }, bold:true };
+
+  // ---- palette tendance (façon dashboard moderne) ----
+  const INK      = 'FF0F172A'; // slate-900
+  const INK_SOFT = 'FF64748B'; // slate-500
+  const WHITE    = 'FFFFFFFF';
+  const TRACK    = 'FFE2E8F0'; // slate-200 (fond des barres)
+  const ACCENT   = 'FF6366F1'; // indigo-500
+  const OK_C     = 'FF059669'; const OK_BG   = 'FFD1FAE5'; // emerald
+  const LOW_C    = 'FFD97706'; const LOW_BG  = 'FFFEF3C7'; // amber
+  const CRIT_C   = 'FFE11D48'; const CRIT_BG = 'FFFFE4E6'; // rose
+
+  const fillOk   = { type:'pattern', pattern:'solid', fgColor:{ argb:OK_BG } };
+  const fillLow  = { type:'pattern', pattern:'solid', fgColor:{ argb:LOW_BG } };
+  const fillCrit = { type:'pattern', pattern:'solid', fgColor:{ argb:CRIT_BG } };
+  const fontOk   = { color:{ argb:OK_C }, bold:true };
+  const fontLow  = { color:{ argb:LOW_C }, bold:true };
+  const fontCrit = { color:{ argb:CRIT_C }, bold:true };
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Stock atelier';
   wb.created = new Date();
 
-  // ===== Feuille Résumé (KPI) =====
-  const wsK = wb.addWorksheet('Résumé');
+  // ===== Feuille Résumé =====
+  const wsK = wb.addWorksheet('Résumé', { views:[{ showGridLines:false }] });
   const total = items.length;
   const counts = { ok:0, low:0, crit:0 };
   items.forEach(it => { counts[statusOf(it)] += 1; });
@@ -2448,53 +2458,89 @@ async function exportXLSX(){
   const tauxRupture = total ? Math.round(1000*counts.crit/total)/10 : 0;
   const sortiesMois = monthlyOutTotal();
 
-  wsK.mergeCells('A1:G1');
-  wsK.getCell('A1').value = 'Résumé du stock — atelier';
-  wsK.getCell('A1').font = { bold:true, size:18, color:{argb:INK} };
-  wsK.mergeCells('A2:G2');
-  wsK.getCell('A2').value = 'Généré le ' + new Date().toLocaleDateString('fr-FR');
-  wsK.getCell('A2').font = { size:10, color:{argb:'FF6B7480'} };
+  // bandeau titre
+  wsK.mergeCells('A1:G2');
+  const bandCell = wsK.getCell('A1');
+  bandCell.value = '  Stock atelier — Tableau de bord';
+  bandCell.font = { bold:true, size:18, color:{argb:WHITE} };
+  bandCell.alignment = { vertical:'middle' };
+  for(let r=1;r<=2;r++){ for(let c=1;c<=7;c++){ wsK.getCell(r,c).fill = { type:'pattern', pattern:'solid', fgColor:{argb:INK} }; } }
+  wsK.getRow(1).height = 22; wsK.getRow(2).height = 22;
 
+  wsK.mergeCells('A3:G3');
+  wsK.getCell('A3').value = '  Généré le ' + new Date().toLocaleDateString('fr-FR') + `  ·  ${total} références suivies`;
+  wsK.getCell('A3').font = { size:10, italic:true, color:{argb:INK_SOFT} };
+
+  // tuiles KPI
   const kpis = [
-    ['Références totales', total, WHITE, INK],
-    ['En stock (OK)', counts.ok, 'FFDFF0E1', 'FF2F6B45'],
-    ['Stock bas', counts.low, 'FFFCE8CC', 'FF8A4B0F'],
-    ['Épuisées', counts.crit, 'FFF6D2CD', 'FF8A241A'],
-    ['Total en alerte', nAlert, 'FFFCE8CC', 'FF8A4B0F'],
-    ['Taux de rupture', tauxRupture + '%', 'FFF6D2CD', 'FF8A241A'],
-    ['Sorties (ce mois)', sortiesMois, 'FFDCE7E9', 'FF2B4C59']
+    ['RÉFÉRENCES', total, WHITE, INK, INK_SOFT],
+    ['EN STOCK OK', counts.ok, OK_BG, OK_C, OK_C],
+    ['STOCK BAS', counts.low, LOW_BG, LOW_C, LOW_C],
+    ['ÉPUISÉES', counts.crit, CRIT_BG, CRIT_C, CRIT_C],
+    ['TOTAL ALERTE', nAlert, LOW_BG, LOW_C, LOW_C],
+    ['TAUX RUPTURE', tauxRupture + '%', CRIT_BG, CRIT_C, CRIT_C],
+    ['SORTIES (MOIS)', sortiesMois, 'FFE0E7FF', ACCENT, ACCENT]
   ];
   kpis.forEach((k, i) => {
     const col = i + 1;
-    const cLabel = wsK.getCell(4, col);
-    const cVal = wsK.getCell(5, col);
+    const cLabel = wsK.getCell(5, col);
+    const cVal = wsK.getCell(6, col);
     cLabel.value = k[0];
     cVal.value = k[1];
-    cLabel.font = { size:10, bold:true, color:{argb:'FF6B7480'} };
-    cVal.font = { size:18, bold:true, color:{argb:k[3]} };
+    cLabel.font = { size:8.5, bold:true, color:{argb:k[4]} };
+    cVal.font = { size:20, bold:true, color:{argb:k[3]} };
     cLabel.fill = { type:'pattern', pattern:'solid', fgColor:{argb:k[2]} };
     cVal.fill = { type:'pattern', pattern:'solid', fgColor:{argb:k[2]} };
-    cLabel.alignment = { wrapText:true, vertical:'middle' };
-    cVal.alignment = { vertical:'middle' };
-    wsK.getColumn(col).width = 17;
+    cLabel.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
+    cVal.alignment = { horizontal:'center', vertical:'middle' };
+    wsK.getColumn(col).width = 15;
   });
-  wsK.getRow(4).height = 30;
-  wsK.getRow(5).height = 32;
+  wsK.getRow(5).height = 20;
+  wsK.getRow(6).height = 34;
 
-  wsK.getCell(7,1).value = 'Quantité totale en stock';
-  wsK.getCell(7,1).font = { size:10, bold:true, color:{argb:'FF6B7480'} };
-  wsK.getCell(8,1).value = totalQty;
-  wsK.getCell(8,1).font = { size:15, bold:true, color:{argb:INK} };
+  // pseudo-graphique en barres : répartition par statut (barres de progression colorées)
+  const chartTitleRow = 9;
+  wsK.getCell(chartTitleRow, 1).value = 'Répartition par statut';
+  wsK.getCell(chartTitleRow, 1).font = { bold:true, size:12, color:{argb:INK} };
 
-  const catHeaderRow = 11;
-  wsK.getCell(catHeaderRow - 1, 1).value = 'Répartition par catégorie';
-  wsK.getCell(catHeaderRow - 1, 1).font = { bold:true, size:13, color:{argb:INK} };
-  const catHeaders = ['Catégorie','Total','OK','Bas','Épuisé','% en alerte'];
+  const BAR_COLS = 10; // largeur de la barre en nombre de cellules fusionnées
+  const statusRows = [
+    ['OK', counts.ok, OK_C, OK_BG],
+    ['Bas', counts.low, LOW_C, LOW_BG],
+    ['Épuisé', counts.crit, CRIT_C, CRIT_BG]
+  ];
+  const maxCount = Math.max(1, counts.ok, counts.low, counts.crit);
+  statusRows.forEach((row, i) => {
+    const r = chartTitleRow + 1 + i;
+    const [label, val, color, bg] = row;
+    wsK.getCell(r, 1).value = label;
+    wsK.getCell(r, 1).font = { bold:true, size:10, color:{argb:INK} };
+    // piste de fond (toute la largeur)
+    for(let c=2; c<=1+BAR_COLS; c++){
+      wsK.getCell(r, c).fill = { type:'pattern', pattern:'solid', fgColor:{argb:TRACK} };
+    }
+    // partie remplie proportionnelle
+    const filled = Math.max(val > 0 ? 1 : 0, Math.round((val/maxCount)*BAR_COLS));
+    for(let c=2; c<=1+filled; c++){
+      wsK.getCell(r, c).fill = { type:'pattern', pattern:'solid', fgColor:{argb:color} };
+    }
+    wsK.getCell(r, 1 + BAR_COLS + 1).value = val;
+    wsK.getCell(r, 1 + BAR_COLS + 1).font = { bold:true, size:11, color:{argb:color} };
+    wsK.getRow(r).height = 18;
+  });
+
+  // ===== Répartition par catégorie =====
+  const catTitleRow = chartTitleRow + statusRows.length + 2;
+  wsK.getCell(catTitleRow, 1).value = 'Répartition par catégorie';
+  wsK.getCell(catTitleRow, 1).font = { bold:true, size:12, color:{argb:INK} };
+  const catHeaderRow = catTitleRow + 1;
+  const catHeaders = ['Catégorie','Total','OK','Bas','Épuisé','% alerte','Volume'];
   catHeaders.forEach((h, i) => {
     const c = wsK.getCell(catHeaderRow, i+1);
     c.value = h;
     c.font = { bold:true, color:{argb:WHITE} };
     c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:INK} };
+    c.alignment = { vertical:'middle' };
   });
   const byCat = {};
   items.forEach(it => {
@@ -2507,20 +2553,31 @@ async function exportXLSX(){
     const tot = c.ok + c.low + c.crit;
     const pct = tot ? Math.round(1000*(c.low+c.crit)/tot)/10 : 0;
     return [cat, tot, c.ok, c.low, c.crit, pct];
-  }).sort((a,b)=> b[5]-a[5]);
+  }).sort((a,b)=> b[1]-a[1]);
+  const maxCatTotal = Math.max(1, ...catRows.map(r=>r[1]));
+  const VOL_COLS = 8;
   catRows.forEach((r, i) => {
     const rowIdx = catHeaderRow + 1 + i;
-    const fillColor = r[5] === 0 ? 'FFDFF0E1' : (r[5] >= 50 ? 'FFF6D2CD' : 'FFFCE8CC');
+    const fillColor = r[5] === 0 ? OK_BG : (r[5] >= 50 ? CRIT_BG : LOW_BG);
     r.forEach((val, ci) => {
       const c = wsK.getCell(rowIdx, ci+1);
       c.value = ci === 5 ? val + '%' : val;
       c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:fillColor} };
     });
+    // mini barre de volume dans la dernière colonne (fusion de cellules)
+    const filled = Math.max(1, Math.round((r[1]/maxCatTotal)*VOL_COLS));
+    for(let c=0; c<VOL_COLS; c++){
+      const cell = wsK.getCell(rowIdx, 7 + c);
+      cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb: c < filled ? ACCENT : TRACK } };
+    }
   });
-  wsK.columns.forEach((c,i)=>{ if(i<6) wsK.getColumn(i+1).width = [26,10,8,8,10,12][i]; });
+  wsK.columns.forEach((c,i)=>{ if(i<6) wsK.getColumn(i+1).width = [24,9,7,7,9,10][i]; });
+  for(let c=7; c<7+VOL_COLS; c++){ wsK.getColumn(c).width = 3; }
+
+  wsK.views = [{ showGridLines:false, state:'frozen', ySplit: catHeaderRow }];
 
   // ===== Feuille Stock (détail) =====
-  const ws = wb.addWorksheet('Stock');
+  const ws = wb.addWorksheet('Stock', { views:[{ showGridLines:false }] });
 
   ws.columns = [
     { header:'Nom',            key:'name',   width:38 },
@@ -2532,9 +2589,10 @@ async function exportXLSX(){
   ];
 
   const headerRow = ws.getRow(1);
-  headerRow.font = { bold:true, color:{ argb:'FFFFFFFF' } };
+  headerRow.font = { bold:true, color:{ argb:WHITE } };
+  headerRow.height = 20;
   headerRow.eachCell(cell => {
-    cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF21262B' } };
+    cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:INK } };
     cell.alignment = { vertical:'middle' };
   });
 
@@ -2553,17 +2611,17 @@ async function exportXLSX(){
       statut: statusLabel[st],
       barcode: it.barcode || ''
     });
-    let fill = fillOk, font = null;
+    let fill = fillOk, font = fontOk;
     if(st === 'low'){ fill = fillLow; font = fontLow; }
     if(st === 'crit'){ fill = fillCrit; font = fontCrit; }
     row.eachCell(cell => {
       cell.fill = fill;
-      if(font) cell.font = font;
+      cell.font = font;
     });
   });
 
   ws.autoFilter = { from:'A1', to:'F1' };
-  ws.views = [{ state:'frozen', ySplit:1 }];
+  ws.views = [{ showGridLines:false, state:'frozen', ySplit:1 }];
 
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
