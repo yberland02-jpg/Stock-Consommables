@@ -11,6 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script>
 //---------------------------------------------------------------------
 //
@@ -1416,6 +1417,40 @@ var qrcode = function() {
   .err{color:var(--crit);font-size:12px;margin:-8px 0 12px;display:none;}
   .loading{padding:60px 20px;text-align:center;color:var(--ink-soft);font-size:14px;}
 
+  .dash-overlay{
+    position:fixed;inset:0;background:var(--paper);z-index:40;display:none;
+    flex-direction:column;
+  }
+  .dash-overlay.open{display:flex;}
+  .dash-header{
+    background:#0F172A;color:#fff;display:flex;align-items:center;gap:12px;
+    padding:16px 18px;flex:0 0 auto;
+  }
+  .dash-back{
+    width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.1);
+    color:#fff;font-size:16px;cursor:pointer;
+  }
+  .dash-title{
+    font-family:'Barlow Condensed',sans-serif;font-size:20px;text-transform:uppercase;
+    font-weight:700;letter-spacing:.02em;
+  }
+  .dash-body{flex:1;overflow-y:auto;padding:16px;}
+  .kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px;}
+  .kpi{background:var(--paper-card);border:1px solid var(--line);border-radius:12px;padding:12px 12px 10px;}
+  .kpi .lbl{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-soft);}
+  .kpi .val{font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:700;margin-top:4px;color:var(--ink);}
+  .kpi.ok{background:#D1FAE5;} .kpi.ok .val{color:#059669;}
+  .kpi.low{background:#FEF3C7;} .kpi.low .val{color:#D97706;}
+  .kpi.crit{background:#FFE4E6;} .kpi.crit .val{color:#E11D48;}
+  .kpi.accent{background:#E0E7FF;} .kpi.accent .val{color:#6366F1;}
+  .dash-grid2{display:flex;flex-direction:column;gap:12px;}
+  .dash-card{background:var(--paper-card);border:1px solid var(--line);border-radius:12px;padding:16px;}
+  .dash-card h2{
+    font-family:'Barlow Condensed',sans-serif;font-size:16px;text-transform:uppercase;
+    margin:0 0 12px;color:var(--ink);
+  }
+  .dash-chart-box{position:relative;height:220px;}
+
   .toast{
     position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);
     background:var(--ink);color:var(--paper);padding:10px 18px;border-radius:10px;
@@ -1489,6 +1524,7 @@ var qrcode = function() {
       <input class="search" id="search" type="text" placeholder="Rechercher un consommable…">
       <button class="export-btn" id="importBtn" aria-label="Mettre à jour le catalogue" title="Mettre à jour le catalogue Voortman (conserve le stock)" style="display:none;">⇪</button>
       <button class="export-btn" id="removeObsoleteBtn" aria-label="Retirer les références obsolètes" title="Retirer les 2 références XPR retirées du fichier" style="display:none;">🗑</button>
+      <button class="export-btn" id="dashboardBtn" aria-label="Voir le dashboard" title="Dashboard" style="display:none;">📊</button>
       <button class="export-btn" id="exportBtn" aria-label="Exporter en Excel" title="Exporter en Excel (alertes surlignées)">⭳</button>
     </div>
     <div class="chips" id="chips"></div>
@@ -1562,6 +1598,26 @@ var qrcode = function() {
   </div>
 
   <div class="toast" id="toast"></div>
+
+  <div class="dash-overlay" id="dashboardOverlay">
+    <div class="dash-header">
+      <button class="dash-back" id="dashBackBtn" aria-label="Fermer le dashboard">←</button>
+      <span class="dash-title">Dashboard</span>
+    </div>
+    <div class="dash-body">
+      <div class="kpi-grid" id="dashKpiGrid"></div>
+      <div class="dash-grid2">
+        <div class="dash-card">
+          <h2>Répartition par statut</h2>
+          <div class="dash-chart-box"><canvas id="dashStatusChart"></canvas></div>
+        </div>
+        <div class="dash-card">
+          <h2>Références par catégorie</h2>
+          <div class="dash-chart-box"><canvas id="dashCatChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div class="sheet-overlay" id="pinOverlay">
     <div class="sheet">
@@ -2029,6 +2085,7 @@ function applyRoleUI(){
   document.querySelectorAll('[data-act="del"]').forEach(b => { b.disabled = !isAdmin; });
   $('fabAdd').disabled = !isAdmin;
   $('refreshBtn').style.display = isAdmin ? 'flex' : 'none';
+  $('dashboardBtn').style.display = isAdmin ? 'flex' : 'none';
   $('removeObsoleteBtn').style.display = isAdmin ? 'flex' : 'none';
   $('importBtn').style.display = isAdmin ? 'flex' : 'none';
 }
@@ -2641,6 +2698,73 @@ $('exportBtn').addEventListener('click', exportXLSX);
 
 const now = new Date();
 $('dateLabelText').textContent = 'réserve · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
+
+let dashStatusChartInstance = null;
+let dashCatChartInstance = null;
+
+function openDashboard(){
+  renderDashboard();
+  $('dashboardOverlay').classList.add('open');
+}
+
+function closeDashboard(){
+  $('dashboardOverlay').classList.remove('open');
+}
+
+function renderDashboard(){
+  const total = items.length;
+  const counts = { ok:0, low:0, crit:0 };
+  items.forEach(it => { counts[statusOf(it)] += 1; });
+  const totalQty = items.reduce((s,it)=> s + (Number(it.qty)||0), 0);
+  const taux = total ? Math.round(1000*counts.crit/total)/10 : 0;
+  const sortiesMois = monthlyOutTotal();
+
+  const tiles = [
+    ['RÉFÉRENCES', total, ''],
+    ['EN STOCK OK', counts.ok, 'ok'],
+    ['STOCK BAS', counts.low, 'low'],
+    ['ÉPUISÉES', counts.crit, 'crit'],
+    ['TAUX RUPTURE', taux + '%', 'crit'],
+    ['SORTIES (MOIS)', sortiesMois, 'accent'],
+  ];
+  $('dashKpiGrid').innerHTML = tiles.map(([lbl,val,cls]) => `
+    <div class="kpi ${cls}"><div class="lbl">${lbl}</div><div class="val">${val}</div></div>
+  `).join('');
+
+  if(typeof Chart === 'undefined'){
+    return; // graphiques indisponibles hors-ligne, les tuiles KPI restent affichées
+  }
+
+  if(dashStatusChartInstance) dashStatusChartInstance.destroy();
+  dashStatusChartInstance = new Chart($('dashStatusChart'), {
+    type:'doughnut',
+    data:{
+      labels:['OK','Bas','Épuisé'],
+      datasets:[{ data:[counts.ok, counts.low, counts.crit], backgroundColor:['#059669','#D97706','#E11D48'], borderWidth:0 }]
+    },
+    options:{ maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, padding:12 } } }, cutout:'62%' }
+  });
+
+  const byCat = {};
+  items.forEach(it => { const c = it.cat || 'Autre'; byCat[c] = (byCat[c]||0) + 1; });
+  const entries = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+  if(dashCatChartInstance) dashCatChartInstance.destroy();
+  dashCatChartInstance = new Chart($('dashCatChart'), {
+    type:'bar',
+    data:{
+      labels: entries.map(e=>e[0]),
+      datasets:[{ data: entries.map(e=>e[1]), backgroundColor:'#6366F1', borderRadius:5, maxBarThickness:18 }]
+    },
+    options:{
+      indexAxis:'y', maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{ x:{ grid:{ color:'#EEF0F4' } }, y:{ grid:{ display:false }, ticks:{ font:{ size:10 } } } }
+    }
+  });
+}
+
+$('dashboardBtn').addEventListener('click', openDashboard);
+$('dashBackBtn').addEventListener('click', closeDashboard);
 
 initFirebase();
 updateSyncBadge();
