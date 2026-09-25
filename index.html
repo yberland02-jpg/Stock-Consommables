@@ -2782,6 +2782,54 @@ async function exportXLSX(){
   ws.autoFilter = { from:'A1', to:'F1' };
   ws.views = [{ showGridLines:false, state:'frozen', ySplit:1 }];
 
+  // ===== Feuille Historique des sorties =====
+  const wsM = wb.addWorksheet('Sorties', { views:[{ showGridLines:false }] });
+  wsM.columns = [
+    { header:'Date',       key:'date',     width:14 },
+    { header:'Heure',      key:'heure',    width:10 },
+    { header:'Article',    key:'name',     width:38 },
+    { header:'Catégorie',  key:'cat',      width:18 },
+    { header:'Quantité',   key:'qty',      width:11 },
+    { header:'Initiales',  key:'operator', width:12 },
+    { header:'Code QR',    key:'barcode',  width:22 }
+  ];
+  const headerRowM = wsM.getRow(1);
+  headerRowM.font = { bold:true, color:{ argb:WHITE } };
+  headerRowM.height = 20;
+  headerRowM.eachCell(cell => {
+    cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:INK } };
+    cell.alignment = { vertical:'middle' };
+  });
+
+  const outMovements = movements
+    .filter(m => m.mode === 'out')
+    .slice()
+    .sort((a,b) => b.ts - a.ts);
+
+  outMovements.forEach(m => {
+    const d = new Date(m.ts);
+    const row = wsM.addRow({
+      date: d.toLocaleDateString('fr-FR'),
+      heure: d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }),
+      name: m.name,
+      cat: m.cat || 'Autre',
+      qty: m.qty,
+      operator: m.operator || '—',
+      barcode: m.barcode || ''
+    });
+    row.eachCell(cell => {
+      cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb: !m.operator ? 'FFFFE4E6' : 'FFFFFFFF' } };
+    });
+  });
+
+  if(outMovements.length === 0){
+    wsM.getCell(2,1).value = 'Aucune sortie enregistrée pour le moment.';
+    wsM.getCell(2,1).font = { italic:true, color:{ argb:INK_SOFT } };
+  }
+
+  wsM.autoFilter = { from:'A1', to: outMovements.length ? 'G1' : 'A1' };
+  wsM.views = [{ showGridLines:false, state:'frozen', ySplit:1 }];
+
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
@@ -2799,7 +2847,7 @@ async function exportXLSX(){
 $('exportBtn').addEventListener('click', exportXLSX);
 
 const now = new Date();
-$('dateLabelText').textContent = 'v2026.09.24-2 · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
+$('dateLabelText').textContent = 'v2026.09.24-3 · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
 
 function openOrderList(){
   renderOrderList();
