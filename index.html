@@ -1669,6 +1669,11 @@ var qrcode = function() {
         </div>
       </div>
       <div class="confirm-delta" id="confirmDelta"></div>
+      <div class="field" id="operatorField" style="display:none;">
+        <label for="operatorCode">Initiales</label>
+        <input id="operatorCode" type="text" placeholder="Ex. JD" autocomplete="off" maxlength="6" style="text-transform:uppercase;">
+        <p class="err" id="operatorErr" style="margin-top:6px;">Les initiales sont obligatoires pour une sortie.</p>
+      </div>
       <div class="sheet-actions">
         <button class="btn ghost" id="confirmCancel">Annuler</button>
         <button class="btn primary" id="confirmValidate">Valider la sortie</button>
@@ -1865,14 +1870,15 @@ function startMovementsRealtimeSync(){
   });
 }
 
-async function logMovement(item, mode, qty){
+async function logMovement(item, mode, qty, operatorCode){
   movements.push({
     ts: Date.now(),
     name: item.name,
     cat: item.cat || 'Autre',
     barcode: item.barcode || '',
     mode,
-    qty
+    qty,
+    operator: operatorCode || ''
   });
   // on garde un historique raisonnable (12 derniers mois) pour ne pas alourdir le stockage
   const cutoff = Date.now() - (365 * 24 * 60 * 60 * 1000);
@@ -2383,18 +2389,43 @@ function openConfirmSheet(){
   const validateBtn = $('confirmValidate');
   validateBtn.textContent = isIn ? 'Valider l\'entrée' : 'Valider la sortie';
   validateBtn.className = 'btn primary ' + (isIn ? 'in' : 'out');
+
+  $('operatorErr').style.display = 'none';
+  if(isIn){
+    $('operatorField').style.display = 'none';
+  }else{
+    $('operatorField').style.display = 'block';
+    let lastCode = '';
+    try{ lastCode = localStorage.getItem('last-operator-code') || ''; }catch(e){}
+    $('operatorCode').value = lastCode;
+  }
+
   $('confirmOverlay').classList.add('open');
+  if(!isIn){ setTimeout(()=> $('operatorCode').focus(), 50); }
 }
 
 async function validatePendingScan(){
   if(!pendingScan) return;
   const { item, mode, qty } = pendingScan;
+
+  let operatorCode = '';
+  if(mode === 'out'){
+    operatorCode = $('operatorCode').value.trim().toUpperCase();
+    if(!operatorCode){
+      $('operatorErr').style.display = 'block';
+      $('operatorCode').focus();
+      return;
+    }
+    try{ localStorage.setItem('last-operator-code', operatorCode); }catch(e){}
+  }
+
   const delta = mode === 'in' ? qty : -qty;
   item.qty = Math.max(0, (Number(item.qty)||0) + delta);
   await saveItems();
-  await logMovement(item, mode, qty);
+  await logMovement(item, mode, qty, operatorCode);
   render();
-  showToast(`${mode==='in' ? '+':'-'}${qty} · ${item.name} → ${item.qty}`, mode==='in' ? 'ok' : 'crit');
+  const opSuffix = operatorCode ? ` (${operatorCode})` : '';
+  showToast(`${mode==='in' ? '+':'-'}${qty} · ${item.name} → ${item.qty}${opSuffix}`, mode==='in' ? 'ok' : 'crit');
   pendingScan = null;
   $('confirmOverlay').classList.remove('open');
 }
@@ -2407,6 +2438,7 @@ function cancelPendingScan(){
 $('confirmValidate').addEventListener('click', validatePendingScan);
 $('confirmCancel').addEventListener('click', cancelPendingScan);
 $('confirmOverlay').addEventListener('click', (e)=>{ if(e.target.id==='confirmOverlay') cancelPendingScan(); });
+$('operatorCode').addEventListener('input', ()=>{ $('operatorErr').style.display = 'none'; });
 
 $('barcodeInput').addEventListener('keydown', (e)=>{
   if(e.key === 'Enter'){
@@ -2767,7 +2799,7 @@ async function exportXLSX(){
 $('exportBtn').addEventListener('click', exportXLSX);
 
 const now = new Date();
-$('dateLabelText').textContent = 'v2026.09.07-2 · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
+$('dateLabelText').textContent = 'v2026.09.24-2 · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
 
 function openOrderList(){
   renderOrderList();
