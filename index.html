@@ -1830,7 +1830,8 @@ async function loadMovements(){
   try{
     if(fbEnabled && fbMovementsRef){
       const snap = await fbMovementsRef.once('value');
-      movements = snap.val() || [];
+      const val = snap.val();
+      movements = val ? Object.values(val) : [];
     }else if(hasClaudeStorage()){
       const res = await window.storage.get(MOVEMENTS_KEY, false);
       movements = res && res.value ? JSON.parse(res.value) : [];
@@ -1844,18 +1845,13 @@ async function loadMovements(){
   updateMonthlyStat();
 }
 
-async function saveMovements(){
+async function saveMovementsLocalOnly(){
   try{
-    if(fbEnabled && fbMovementsRef){
-      await fbMovementsRef.set(movements);
-      try{ localStorage.setItem(MOVEMENTS_KEY, JSON.stringify(movements)); }catch(e){}
+    const payload = JSON.stringify(movements);
+    if(hasClaudeStorage()){
+      await window.storage.set(MOVEMENTS_KEY, payload, false);
     }else{
-      const payload = JSON.stringify(movements);
-      if(hasClaudeStorage()){
-        await window.storage.set(MOVEMENTS_KEY, payload, false);
-      }else{
-        localStorage.setItem(MOVEMENTS_KEY, payload);
-      }
+      localStorage.setItem(MOVEMENTS_KEY, payload);
     }
   }catch(e){
     console.error('Erreur de sauvegarde des mouvements', e);
@@ -1865,13 +1861,14 @@ async function saveMovements(){
 function startMovementsRealtimeSync(){
   if(!fbEnabled || !fbMovementsRef) return;
   fbMovementsRef.on('value', (snap) => {
-    movements = snap.val() || [];
+    const val = snap.val();
+    movements = val ? Object.values(val) : [];
     updateMonthlyStat();
   });
 }
 
 async function logMovement(item, mode, qty, operatorCode){
-  movements.push({
+  const entry = {
     ts: Date.now(),
     name: item.name,
     cat: item.cat || 'Autre',
@@ -1879,11 +1876,27 @@ async function logMovement(item, mode, qty, operatorCode){
     mode,
     qty,
     operator: operatorCode || ''
-  });
-  // on garde un historique raisonnable (12 derniers mois) pour ne pas alourdir le stockage
-  const cutoff = Date.now() - (365 * 24 * 60 * 60 * 1000);
-  movements = movements.filter(m => m.ts >= cutoff);
-  await saveMovements();
+  };
+
+  if(fbEnabled && fbMovementsRef){
+    // chaque mouvement est ajouté individuellement (push), jamais de réécriture
+    // complète de l'historique -> deux téléphones qui valident une sortie en
+    // même temps ne peuvent plus s'écraser l'un l'autre.
+    try{
+      await fbMovementsRef.push(entry);
+    }catch(e){
+      console.error('Erreur enregistrement mouvement', e);
+    }
+    // mise à jour optimiste locale immédiate ; l'écouteur temps réel
+    // synchronisera ensuite avec la version faisant autorité côté serveur
+    movements = [...movements, entry];
+  }else{
+    movements.push(entry);
+    // on garde un historique raisonnable (12 derniers mois) pour ne pas alourdir le stockage
+    const cutoff = Date.now() - (365 * 24 * 60 * 60 * 1000);
+    movements = movements.filter(m => m.ts >= cutoff);
+    await saveMovementsLocalOnly();
+  }
   updateMonthlyStat();
 }
 
@@ -2847,7 +2860,7 @@ async function exportXLSX(){
 $('exportBtn').addEventListener('click', exportXLSX);
 
 const now = new Date();
-$('dateLabelText').textContent = 'v2026.09.24-3 · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
+$('dateLabelText').textContent = 'v2026.09.24-4 · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
 
 function openOrderList(){
   renderOrderList();
