@@ -2847,9 +2847,8 @@ async function exportXLSX(){
   const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const stamp = new Date().toISOString().slice(0,10);
   a.href = url;
-  a.download = `stock-atelier-${stamp}.xlsx`;
+  a.download = `stock-atelier-export.xlsx`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -2860,7 +2859,7 @@ async function exportXLSX(){
 $('exportBtn').addEventListener('click', exportXLSX);
 
 const now = new Date();
-$('dateLabelText').textContent = 'v2026.09.24-4 · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
+$('dateLabelText').textContent = 'v2026.09.25-1 · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
 
 function openOrderList(){
   renderOrderList();
