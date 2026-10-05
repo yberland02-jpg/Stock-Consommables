@@ -2597,15 +2597,21 @@ async function exportXLSX(){
 
   const statusLabel = { ok:'OK', low:'Bas', crit:'Épuisé' };
 
-  // ---- palette tendance (façon dashboard moderne) ----
-  const INK      = 'FF0F172A'; // slate-900
-  const INK_SOFT = 'FF64748B'; // slate-500
+  // ---- palette jeune / vive (dégradé violet -> fuchsia) ----
+  const INK      = 'FF1E1B2E'; // violet très sombre (remplace le slate-900)
+  const INK_SOFT = 'FF7C7291';
   const WHITE    = 'FFFFFFFF';
-  const TRACK    = 'FFE2E8F0'; // slate-200 (fond des barres)
-  const ACCENT   = 'FF6366F1'; // indigo-500
-  const OK_C     = 'FF059669'; const OK_BG   = 'FFD1FAE5'; // emerald
-  const LOW_C    = 'FFD97706'; const LOW_BG  = 'FFFEF3C7'; // amber
-  const CRIT_C   = 'FFE11D48'; const CRIT_BG = 'FFFFE4E6'; // rose
+  const TRACK    = 'FFEDE9FE'; // violet très clair (fond des barres)
+  const ACCENT   = 'FF8B5CF6'; // violet-500
+  const ACCENT2  = 'FFEC4899'; // fuchsia-500
+  const CYAN     = 'FF06B6D4'; // cyan-500
+  const OK_C     = 'FF16A34A'; const OK_BG   = 'FFDCFCE7'; // vert vif
+  const LOW_C    = 'FFF59E0B'; const LOW_BG  = 'FFFEF3C7'; // ambre vif
+  const CRIT_C   = 'FFEC4899'; const CRIT_BG = 'FFFCE7F3'; // fuchsia vif
+  const headerGradient = {
+    type:'gradient', gradient:'angle', degree:45,
+    stops:[ {position:0, color:{argb:ACCENT}}, {position:1, color:{argb:ACCENT2}} ]
+  };
 
   const fillOk   = { type:'pattern', pattern:'solid', fgColor:{ argb:OK_BG } };
   const fillLow  = { type:'pattern', pattern:'solid', fgColor:{ argb:LOW_BG } };
@@ -2628,14 +2634,14 @@ async function exportXLSX(){
   const tauxRupture = total ? Math.round(1000*counts.crit/total)/10 : 0;
   const sortiesMois = monthlyOutTotal();
 
-  // bandeau titre
+  // bandeau titre (dégradé)
   wsK.mergeCells('A1:G2');
   const bandCell = wsK.getCell('A1');
-  bandCell.value = '  Stock atelier — Tableau de bord';
-  bandCell.font = { bold:true, size:18, color:{argb:WHITE} };
+  bandCell.value = '  ⚡ Stock atelier — Tableau de bord';
+  bandCell.font = { bold:true, size:19, color:{argb:WHITE} };
   bandCell.alignment = { vertical:'middle' };
-  for(let r=1;r<=2;r++){ for(let c=1;c<=7;c++){ wsK.getCell(r,c).fill = { type:'pattern', pattern:'solid', fgColor:{argb:INK} }; } }
-  wsK.getRow(1).height = 22; wsK.getRow(2).height = 22;
+  for(let r=1;r<=2;r++){ for(let c=1;c<=7;c++){ wsK.getCell(r,c).fill = headerGradient; } }
+  wsK.getRow(1).height = 24; wsK.getRow(2).height = 24;
 
   wsK.mergeCells('A3:G3');
   wsK.getCell('A3').value = '  Généré le ' + new Date().toLocaleDateString('fr-FR') + `  ·  ${total} références suivies`;
@@ -2643,13 +2649,13 @@ async function exportXLSX(){
 
   // tuiles KPI
   const kpis = [
-    ['RÉFÉRENCES', total, WHITE, INK, INK_SOFT],
-    ['EN STOCK OK', counts.ok, OK_BG, OK_C, OK_C],
-    ['STOCK BAS', counts.low, LOW_BG, LOW_C, LOW_C],
-    ['ÉPUISÉES', counts.crit, CRIT_BG, CRIT_C, CRIT_C],
-    ['TOTAL ALERTE', nAlert, LOW_BG, LOW_C, LOW_C],
-    ['TAUX RUPTURE', tauxRupture + '%', CRIT_BG, CRIT_C, CRIT_C],
-    ['SORTIES (MOIS)', sortiesMois, 'FFE0E7FF', ACCENT, ACCENT]
+    ['📦 RÉFÉRENCES', total, WHITE, INK, INK_SOFT],
+    ['✅ EN STOCK OK', counts.ok, OK_BG, OK_C, OK_C],
+    ['🟡 STOCK BAS', counts.low, LOW_BG, LOW_C, LOW_C],
+    ['🔴 ÉPUISÉES', counts.crit, CRIT_BG, CRIT_C, CRIT_C],
+    ['⚠️ TOTAL ALERTE', nAlert, LOW_BG, LOW_C, LOW_C],
+    ['📉 TAUX RUPTURE', tauxRupture + '%', CRIT_BG, CRIT_C, CRIT_C],
+    ['📤 SORTIES (MOIS)', sortiesMois, 'FFEDE9FE', ACCENT, ACCENT]
   ];
   kpis.forEach((k, i) => {
     const col = i + 1;
@@ -2843,6 +2849,63 @@ async function exportXLSX(){
   wsM.autoFilter = { from:'A1', to: outMovements.length ? 'G1' : 'A1' };
   wsM.views = [{ showGridLines:false, state:'frozen', ySplit:1 }];
 
+  // ===== Feuille Sorties par opérateur =====
+  const wsO = wb.addWorksheet('Opérateurs', { views:[{ showGridLines:false }] });
+  wsO.mergeCells('A1:E2');
+  const bandO = wsO.getCell('A1');
+  bandO.value = '  👤 Sorties par opérateur';
+  bandO.font = { bold:true, size:16, color:{argb:WHITE} };
+  bandO.alignment = { vertical:'middle' };
+  for(let r=1;r<=2;r++){ for(let c=1;c<=5;c++){ wsO.getCell(r,c).fill = headerGradient; } }
+  wsO.getRow(1).height = 22; wsO.getRow(2).height = 22;
+
+  const byOperator = {};
+  outMovements.forEach(m => {
+    const key = m.operator || '—';
+    if(!byOperator[key]) byOperator[key] = { count:0, qty:0, last:0 };
+    byOperator[key].count += 1;
+    byOperator[key].qty += Number(m.qty) || 0;
+    byOperator[key].last = Math.max(byOperator[key].last, m.ts);
+  });
+  const operatorRows = Object.keys(byOperator)
+    .map(op => ({ op, ...byOperator[op] }))
+    .sort((a,b) => b.qty - a.qty);
+
+  const opHeaderRow = 4;
+  const opHeaders = ['Initiales','Nb sorties','Qté totale sortie','Dernière sortie'];
+  opHeaders.forEach((h,i) => {
+    const c = wsO.getCell(opHeaderRow, i+1);
+    c.value = h;
+    c.font = { bold:true, color:{argb:WHITE} };
+    c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:INK} };
+    c.alignment = { vertical:'middle' };
+  });
+  const opColors = [ACCENT, ACCENT2, CYAN, OK_C, LOW_C];
+  const maxOpQty = Math.max(1, ...operatorRows.map(o=>o.qty));
+  const BAR_COLS_OP = 10;
+  operatorRows.forEach((o, i) => {
+    const r = opHeaderRow + 1 + i;
+    const color = opColors[i % opColors.length];
+    wsO.getCell(r,1).value = o.op;
+    wsO.getCell(r,1).font = { bold:true, color:{argb:INK} };
+    wsO.getCell(r,2).value = o.count;
+    wsO.getCell(r,3).value = o.qty;
+    wsO.getCell(r,4).value = o.last ? new Date(o.last).toLocaleDateString('fr-FR') : '';
+    [1,2,3,4].forEach(c => { wsO.getCell(r,c).fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFAF5FF'} }; });
+    // mini barre de volume (colonne E+)
+    const filled = Math.max(1, Math.round((o.qty/maxOpQty)*BAR_COLS_OP));
+    for(let c=0; c<BAR_COLS_OP; c++){
+      wsO.getCell(r, 5+c).fill = { type:'pattern', pattern:'solid', fgColor:{argb: c < filled ? color : TRACK } };
+    }
+  });
+  if(operatorRows.length === 0){
+    wsO.getCell(opHeaderRow+1,1).value = 'Aucune sortie enregistrée pour le moment.';
+    wsO.getCell(opHeaderRow+1,1).font = { italic:true, color:{argb:INK_SOFT} };
+  }
+  [1,2,3,4].forEach((c,i) => { wsO.getColumn(c).width = [14,12,16,16][i]; });
+  for(let c=5; c<5+BAR_COLS_OP; c++){ wsO.getColumn(c).width = 3; }
+  wsO.views = [{ showGridLines:false, state:'frozen', ySplit:opHeaderRow }];
+
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
@@ -2859,7 +2922,7 @@ async function exportXLSX(){
 $('exportBtn').addEventListener('click', exportXLSX);
 
 const now = new Date();
-$('dateLabelText').textContent = 'v2026.09.25-1 · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
+$('dateLabelText').textContent = 'v2026.09.30-1 · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
 
 function openOrderList(){
   renderOrderList();
