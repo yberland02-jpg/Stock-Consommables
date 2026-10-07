@@ -2597,17 +2597,17 @@ async function exportXLSX(){
 
   const statusLabel = { ok:'OK', low:'Bas', crit:'Épuisé' };
 
-  // ---- palette jeune / vive (dégradé violet -> fuchsia) ----
-  const INK      = 'FF1E1B2E'; // violet très sombre (remplace le slate-900)
-  const INK_SOFT = 'FF7C7291';
+  // ---- palette sobre bleu marine (peu de couleur, pro) ----
+  const INK      = 'FF0B1D33'; // bleu marine très sombre
+  const INK_SOFT = 'FF64748B';
   const WHITE    = 'FFFFFFFF';
-  const TRACK    = 'FFEDE9FE'; // violet très clair (fond des barres)
-  const ACCENT   = 'FF8B5CF6'; // violet-500
-  const ACCENT2  = 'FFEC4899'; // fuchsia-500
-  const CYAN     = 'FF06B6D4'; // cyan-500
-  const OK_C     = 'FF16A34A'; const OK_BG   = 'FFDCFCE7'; // vert vif
-  const LOW_C    = 'FFF59E0B'; const LOW_BG  = 'FFFEF3C7'; // ambre vif
-  const CRIT_C   = 'FFEC4899'; const CRIT_BG = 'FFFCE7F3'; // fuchsia vif
+  const TRACK    = 'FFE2E8F0'; // gris-bleu clair (fond des barres)
+  const ACCENT   = 'FF1E3A8A'; // bleu marine
+  const ACCENT2  = 'FF2563EB'; // bleu un peu plus clair (léger dégradé)
+  const CYAN     = 'FF475569'; // gris ardoise (variation discrète)
+  const OK_C     = 'FF2F7D4F'; const OK_BG   = 'FFE1EEE3'; // vert sobre
+  const LOW_C    = 'FFB8720E'; const LOW_BG  = 'FFFCEFDA'; // ambre sobre
+  const CRIT_C   = 'FFB13A2E'; const CRIT_BG = 'FFFAE4E1'; // rouge sobre
   const headerGradient = {
     type:'gradient', gradient:'angle', degree:45,
     stops:[ {position:0, color:{argb:ACCENT}}, {position:1, color:{argb:ACCENT2}} ]
@@ -2637,7 +2637,7 @@ async function exportXLSX(){
   // bandeau titre (dégradé)
   wsK.mergeCells('A1:G2');
   const bandCell = wsK.getCell('A1');
-  bandCell.value = '  ⚡ Stock atelier — Tableau de bord';
+  bandCell.value = '  Stock atelier — Tableau de bord';
   bandCell.font = { bold:true, size:19, color:{argb:WHITE} };
   bandCell.alignment = { vertical:'middle' };
   for(let r=1;r<=2;r++){ for(let c=1;c<=7;c++){ wsK.getCell(r,c).fill = headerGradient; } }
@@ -2649,13 +2649,13 @@ async function exportXLSX(){
 
   // tuiles KPI
   const kpis = [
-    ['📦 RÉFÉRENCES', total, WHITE, INK, INK_SOFT],
-    ['✅ EN STOCK OK', counts.ok, OK_BG, OK_C, OK_C],
-    ['🟡 STOCK BAS', counts.low, LOW_BG, LOW_C, LOW_C],
-    ['🔴 ÉPUISÉES', counts.crit, CRIT_BG, CRIT_C, CRIT_C],
-    ['⚠️ TOTAL ALERTE', nAlert, LOW_BG, LOW_C, LOW_C],
-    ['📉 TAUX RUPTURE', tauxRupture + '%', CRIT_BG, CRIT_C, CRIT_C],
-    ['📤 SORTIES (MOIS)', sortiesMois, 'FFEDE9FE', ACCENT, ACCENT]
+    ['RÉFÉRENCES', total, WHITE, INK, INK_SOFT],
+    ['EN STOCK OK', counts.ok, OK_BG, OK_C, OK_C],
+    ['STOCK BAS', counts.low, LOW_BG, LOW_C, LOW_C],
+    ['ÉPUISÉES', counts.crit, CRIT_BG, CRIT_C, CRIT_C],
+    ['TOTAL ALERTE', nAlert, LOW_BG, LOW_C, LOW_C],
+    ['TAUX RUPTURE', tauxRupture + '%', CRIT_BG, CRIT_C, CRIT_C],
+    ['SORTIES (MOIS)', sortiesMois, TRACK, ACCENT, ACCENT]
   ];
   kpis.forEach((k, i) => {
     const col = i + 1;
@@ -2853,7 +2853,7 @@ async function exportXLSX(){
   const wsO = wb.addWorksheet('Opérateurs', { views:[{ showGridLines:false }] });
   wsO.mergeCells('A1:E2');
   const bandO = wsO.getCell('A1');
-  bandO.value = '  👤 Sorties par opérateur';
+  bandO.value = '  Sorties par opérateur';
   bandO.font = { bold:true, size:16, color:{argb:WHITE} };
   bandO.alignment = { vertical:'middle' };
   for(let r=1;r<=2;r++){ for(let c=1;c<=5;c++){ wsO.getCell(r,c).fill = headerGradient; } }
@@ -2891,7 +2891,7 @@ async function exportXLSX(){
     wsO.getCell(r,2).value = o.count;
     wsO.getCell(r,3).value = o.qty;
     wsO.getCell(r,4).value = o.last ? new Date(o.last).toLocaleDateString('fr-FR') : '';
-    [1,2,3,4].forEach(c => { wsO.getCell(r,c).fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFAF5FF'} }; });
+    [1,2,3,4].forEach(c => { wsO.getCell(r,c).fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF8FAFC'} }; });
     // mini barre de volume (colonne E+)
     const filled = Math.max(1, Math.round((o.qty/maxOpQty)*BAR_COLS_OP));
     for(let c=0; c<BAR_COLS_OP; c++){
@@ -2922,7 +2922,7 @@ async function exportXLSX(){
 $('exportBtn').addEventListener('click', exportXLSX);
 
 const now = new Date();
-$('dateLabelText').textContent = 'v2026.09.30-1 · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
+$('dateLabelText').textContent = 'v2026.09.30-3 · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
 
 function openOrderList(){
   renderOrderList();
