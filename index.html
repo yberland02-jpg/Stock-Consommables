@@ -1524,6 +1524,7 @@ var qrcode = function() {
       <button class="export-btn" id="importBtn" aria-label="Mettre à jour le catalogue" title="Mettre à jour le catalogue Voortman (conserve le stock)" style="display:none;">⇪</button>
       <button class="export-btn" id="dedupBtn" aria-label="Supprimer les doublons" title="Supprimer les références en double" style="display:none;">⚭</button>
       <button class="export-btn" id="orderBtn" aria-label="À commander" title="Articles à commander" style="display:none;">📦</button>
+      <button class="export-btn" id="clearMonthBtn" aria-label="Vider les sorties du mois" title="Vider les sorties du mois en cours" style="display:none;">↺</button>
       <button class="export-btn" id="exportBtn" aria-label="Exporter en Excel" title="Exporter en Excel (alertes surlignées)" style="display:none;">⭳</button>
     </div>
     <div class="chips" id="chips"></div>
@@ -1867,6 +1868,51 @@ function startMovementsRealtimeSync(){
   });
 }
 
+async function clearThisMonthMovements(){
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const before = movements.length;
+  movements = movements.filter(mv => {
+    const d = new Date(mv.ts);
+    return !(d.getFullYear() === y && d.getMonth() === m);
+  });
+  const removed = before - movements.length;
+  if(removed === 0){
+    showToast('Aucune sortie ce mois-ci à supprimer', 'ok');
+    return;
+  }
+  try{
+    if(fbEnabled && fbMovementsRef){
+      if(movements.length === 0){
+        await fbMovementsRef.set(null);
+      }else{
+        const obj = {};
+        movements.forEach((mv, i) => { obj['m' + i + '_' + mv.ts] = mv; });
+        await fbMovementsRef.set(obj);
+      }
+    }else{
+      await saveMovementsLocalOnly();
+    }
+  }catch(e){
+    console.error('Erreur lors du nettoyage des sorties', e);
+  }
+  updateMonthlyStat();
+  showToast(`${removed} sortie(s) du mois supprimée(s)`, 'crit');
+}
+
+$('clearMonthBtn').addEventListener('click', () => {
+  if(role !== 'admin') return;
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const count = movements.filter(mv => {
+    const d = new Date(mv.ts);
+    return d.getFullYear() === y && d.getMonth() === m;
+  }).length;
+  if(count === 0){ showToast('Aucune sortie ce mois-ci à supprimer', 'ok'); return; }
+  const ok = confirm(`Supprimer les ${count} sortie(s) enregistrée(s) ce mois-ci ? Le compteur "Sorties (mois)" repassera à 0. Cette action est irréversible.`);
+  if(ok) clearThisMonthMovements();
+});
+
 async function logMovement(item, mode, qty, operatorCode){
   const entry = {
     ts: Date.now(),
@@ -2156,6 +2202,7 @@ function applyRoleUI(){
   $('refreshBtn').style.display = isAdmin ? 'flex' : 'none';
   $('exportBtn').style.display = isAdmin ? 'flex' : 'none';
   $('orderBtn').style.display = isAdmin ? 'flex' : 'none';
+  $('clearMonthBtn').style.display = isAdmin ? 'flex' : 'none';
   $('dedupBtn').style.display = isAdmin ? 'flex' : 'none';
   $('importBtn').style.display = isAdmin ? 'flex' : 'none';
 }
@@ -2922,7 +2969,7 @@ async function exportXLSX(){
 $('exportBtn').addEventListener('click', exportXLSX);
 
 const now = new Date();
-$('dateLabelText').textContent = 'v2026.09.30-3 · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
+$('dateLabelText').textContent = 'v2026.10.08-1 · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
 
 function openOrderList(){
   renderOrderList();
