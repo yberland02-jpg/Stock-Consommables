@@ -1461,19 +1461,25 @@ var qrcode = function() {
   .toast.crit{border-left:4px solid #E28275;}
 
   .cam-overlay{
-    position:fixed;inset:0;background:#000;display:none;z-index:30;
-    flex-direction:column;align-items:center;justify-content:center;
+    position:fixed;top:0;left:0;right:0;height:100vh;height:100dvh;
+    background:#000;display:none;z-index:30;overflow:hidden;
   }
-  .cam-overlay.open{display:flex;}
-  .cam-overlay video{width:100%;max-height:70vh;object-fit:cover;}
+  .cam-overlay.open{display:block;}
+  /* la vidéo remplit tout l'écran : le rectangle (centré à 50 %) est ainsi
+     toujours au centre de l'image, quelle que soit la forme du flux caméra (iPhone compris) */
+  .cam-overlay video{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;background:#000;}
   .cam-frame{
-    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1;
     width:80%;max-width:320px;height:120px;border:2px solid #fff;border-radius:10px;
     box-shadow:0 0 0 2000px rgba(0,0,0,.45);
   }
-  .cam-msg{color:#fff;font-size:13px;text-align:center;padding:16px;max-width:320px;}
+  .cam-msg{
+    position:absolute;left:0;right:0;top:calc(50% + 80px);margin:0 auto;z-index:1;
+    color:#fff;font-size:13px;text-align:center;padding:0 16px;max-width:320px;
+    text-shadow:0 1px 3px rgba(0,0,0,.8);
+  }
   .cam-close{
-    position:absolute;top:20px;right:20px;width:40px;height:40px;border-radius:50%;
+    position:absolute;top:20px;right:20px;z-index:2;width:40px;height:40px;border-radius:50%;
     background:rgba(255,255,255,.15);color:#fff;border:none;font-size:20px;cursor:pointer;
   }
 </style>
@@ -2922,7 +2928,7 @@ async function exportXLSX(){
 $('exportBtn').addEventListener('click', exportXLSX);
 
 const now = new Date();
-$('dateLabelText').textContent = 'v2026.10.26-1 · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
+$('dateLabelText').textContent = 'v2026.10.28-1 · maj ' + now.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
 
 function openOrderList(){
   renderOrderList();
